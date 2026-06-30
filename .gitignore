@@ -1,0 +1,14 @@
+.idea/
+.claude/
+.agents/
+target/
+project.private.config.json
+frontend/uniapp/node_modules/
+frontend/uniapp/.npm-cache/
+frontend/uniapp/dist/
+frontend/uniapp/.vite/
+frontend/uniapp/unpackage/
+frontend/staff-auth-test-ui/node_modules/
+frontend/staff-auth-test-ui/.npm-cache/
+frontend/staff-auth-test-ui/dist/
+*.log

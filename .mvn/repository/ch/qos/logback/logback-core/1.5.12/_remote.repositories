@@ -1,0 +1,4 @@
+#NOTE: This is a Maven Resolver internal implementation file, its format can be changed without prior notice.
+#Mon Jun 29 16:16:50 CST 2026
+logback-core-1.5.12.jar>central-direct=
+logback-core-1.5.12.pom>central-direct=

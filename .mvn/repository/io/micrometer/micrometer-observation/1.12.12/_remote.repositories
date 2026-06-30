@@ -1,0 +1,4 @@
+#NOTE: This is a Maven Resolver internal implementation file, its format can be changed without prior notice.
+#Mon Jun 29 16:21:38 CST 2026
+micrometer-observation-1.12.12.jar>central-direct=
+micrometer-observation-1.12.12.pom>central-direct=
