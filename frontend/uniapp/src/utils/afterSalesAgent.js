@@ -1,4 +1,5 @@
 import { getAgentBaseUrl, getAgentRequestTimeout } from './apiConfig'
+import { normalizeOrderStatus, resolveOrderAfterSalesSnapshot } from './orderStatus'
 
 const STORAGE_PREFIX = 'after_sales_agent'
 
@@ -28,7 +29,7 @@ function agentRequest(options) {
         resolve(body.data !== undefined ? body.data : body)
       },
       fail: (error) => {
-        reject(new Error(error?.errMsg || '售后 Agent 服务未连接'))
+        reject(new Error(error?.errMsg || '当前售后服务暂时无法连接'))
       }
     })
   })
@@ -99,6 +100,16 @@ function getCurrentUserId() {
   return String(userInfo.id || userInfo.userId || 'u1001')
 }
 
+function hasLocalAfterSalesTicket(orderNo) {
+  if (!orderNo) return false
+  try {
+    const ticket = uni.getStorageSync(`after_sales_ticket:${orderNo}`)
+    return Boolean(ticket && ticket.ticket_id)
+  } catch (error) {
+    return false
+  }
+}
+
 export function buildSelectedOrder(order = {}, extra = {}) {
   const item = Array.isArray(order.items) && order.items.length > 0 ? order.items[0] : {}
   const totalAmount = order.payAmount !== undefined && order.payAmount !== null
@@ -109,25 +120,37 @@ export function buildSelectedOrder(order = {}, extra = {}) {
     SHIPPED: 'shipped',
     RECEIVED: 'delivered',
     COMPLETED: 'completed',
-    AFTERSALE: 'after_sales',
+    CLOSED: 'closed',
     REFUNDED: 'refunded'
   }
-  const afterSalesStatus = extra.afterSalesStatus || (order.status === 'AFTERSALE' ? 'merchant_review' : 'not_applied')
+  const orderNo = String(order.orderNo || order.id || extra.orderId || '')
+  const hasTicket = hasLocalAfterSalesTicket(orderNo)
+  const orderStatus = normalizeOrderStatus(order.status)
+  const afterSalesSnapshot = resolveOrderAfterSalesSnapshot({
+    ...order,
+    hasOpenAfterSales: extra.hasOpenAfterSales ?? order.hasOpenAfterSales,
+    afterSalesStatus: extra.afterSalesStatus || order.afterSalesStatus,
+    afterSalesStatusText: extra.afterSalesStatusText || order.afterSalesStatusText,
+    latestAfterSalesTicketNo: order.latestAfterSalesTicketNo || (hasTicket ? orderNo : '')
+  })
+  const hasOpenAfterSales = Boolean(extra.hasOpenAfterSales ?? afterSalesSnapshot.hasOpenAfterSales)
+  const afterSalesStatus = String(extra.afterSalesStatus || afterSalesSnapshot.afterSalesStatus || 'not_applied')
   const uploadedEvidence = Array.isArray(extra.uploadedEvidence)
     ? extra.uploadedEvidence
     : (extra.uploadedEvidence ? [extra.uploadedEvidence] : [])
 
   return {
-    order_id: String(order.orderNo || order.id || extra.orderId || ''),
+    order_id: orderNo,
     user_id: String(extra.userId || getCurrentUserId()),
+    merchant_code: String(order.merchantCode || extra.merchantCode || 'MERCHANT_DEMO'),
     product_name: String(item.productName || extra.productName || order.orderNo || '未知商品'),
     category: String(item.productSpec || extra.category || '综合'),
-    status: statusMap[order.status] || String(extra.status || 'delivered'),
+    status: statusMap[orderStatus] || String(extra.status || 'delivered'),
     after_sales_status: afterSalesStatus,
     amount: Number(totalAmount || item.price || 0),
     refund_status: String(extra.refundStatus || order.refundStatus || '未进入退款流程'),
     logistics_status: String(extra.logisticsStatus || order.statusText || '待更新'),
-    has_open_after_sales: Boolean(extra.hasOpenAfterSales ?? (order.status === 'AFTERSALE')),
+    has_open_after_sales: hasOpenAfterSales,
     uploaded_evidence: uploadedEvidence
   }
 }
@@ -142,7 +165,8 @@ export function buildChatPayload({
   imageReview = null,
   skipImageReview = false,
   itemOpened = null,
-  selectedOrderExtra = {}
+  selectedOrderExtra = {},
+  recentHistory = []
 }) {
   const selectedOrder = order ? buildSelectedOrder(order, selectedOrderExtra) : null
   const payload = {
@@ -152,7 +176,11 @@ export function buildChatPayload({
     description,
     human_request_count: humanRequestCount,
     skip_image_review: skipImageReview,
-    attachments
+    attachments,
+    recent_history: recentHistory
+  }
+  if (selectedOrderExtra.forceAfterSalesApply) {
+    payload.force_after_sales_apply = true
   }
   if (selectedOrder) {
     payload.selected_order = selectedOrder

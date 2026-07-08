@@ -1,5 +1,5 @@
 <script setup>
-import { computed, inject, onMounted, ref } from 'vue';
+import { computed, inject, onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { closeSession, getSessions } from '../api/merchantCs';
 
@@ -8,8 +8,10 @@ const shell = inject('merchantCsShell', null);
 const loading = ref(true);
 const sessions = ref([]);
 const activeFilter = ref('ACTIVE');
+const nowTick = ref(Date.now());
+let waitTimer = null;
 
-const terminalStatuses = ['RESOLVED', 'CLOSED'];
+const terminalStatuses = ['RESOLVED'];
 const filterOptions = [
   { key: 'ACTIVE', label: '活跃会话' },
   { key: 'WAITING', label: '待接入' },
@@ -20,7 +22,7 @@ const filterOptions = [
 ];
 
 const visibleSessions = computed(() => {
-  return sessions.value.filter((item) => {
+  return sessions.value.filter((item) => item.status !== 'CLOSED').filter((item) => {
     if (activeFilter.value === 'ACTIVE') {
       return !terminalStatuses.includes(item.status);
     }
@@ -28,11 +30,11 @@ const visibleSessions = computed(() => {
       return terminalStatuses.includes(item.status);
     }
     return item.status === activeFilter.value;
-  });
+  }).sort((a, b) => waitSeconds(b) - waitSeconds(a));
 });
 
 const stats = computed(() => {
-  const active = sessions.value.filter((item) => !terminalStatuses.includes(item.status)).length;
+  const active = sessions.value.filter((item) => item.status !== 'CLOSED' && !terminalStatuses.includes(item.status)).length;
   const awaitingEvaluation = sessions.value.filter((item) => item.status === 'AWAITING_EVALUATION').length;
   const readyToClose = sessions.value.filter((item) => item.status === 'READY_TO_CLOSE').length;
   return [
@@ -56,15 +58,15 @@ async function handleClose(sessionId) {
   try {
     const updated = await closeSession(sessionId);
     sessions.value = sessions.value.map((item) => (item.id === updated.id ? { ...item, ...updated } : item));
-    shell?.setAction('会话已由客服关闭');
+    shell?.setAction('会话已移除');
     shell?.refreshShell();
   } catch (error) {
-    shell?.setAction(error.message || '当前状态不允许关闭会话');
+    shell?.setAction(error.message || '移除失败');
   }
 }
 
 function canClose(item) {
-  return item.status === 'READY_TO_CLOSE';
+  return item.status !== 'CLOSED';
 }
 
 function statusLabel(status) {
@@ -96,7 +98,38 @@ function fieldValue(value, fallback = '暂无') {
   return value || fallback;
 }
 
-onMounted(loadPage);
+function waitSeconds(item) {
+  if (!item?.waitStartedAt) {
+    return Number(item?.waitSeconds || 0);
+  }
+  const started = new Date(String(item.waitStartedAt).replace(' ', 'T')).getTime();
+  if (!Number.isFinite(started)) {
+    return Number(item?.waitSeconds || 0);
+  }
+  return Math.max(Math.floor((nowTick.value - started) / 1000), 0);
+}
+
+function waitLabel(item) {
+  const seconds = waitSeconds(item);
+  if (!seconds) {
+    return '已回复';
+  }
+  const minutes = Math.floor(seconds / 60);
+  return `等待 ${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+onMounted(() => {
+  loadPage();
+  waitTimer = window.setInterval(() => {
+    nowTick.value = Date.now();
+  }, 1000);
+});
+onUnmounted(() => {
+  if (waitTimer) {
+    window.clearInterval(waitTimer);
+    waitTimer = null;
+  }
+});
 </script>
 
 <template>
@@ -156,21 +189,23 @@ onMounted(loadPage);
           </span>
           <span class="session-meta">
             <span :class="['session-status', statusTone(item.status)]">{{ statusLabel(item.status) }}</span>
-            <span>{{ fieldValue(item.wait, item.waitText || '等待中') }}</span>
+            <span>{{ waitLabel(item) }}</span>
           </span>
           <span class="session-meta compact">
             <span class="tag">{{ fieldValue(item.level, '普通优先级') }}</span>
-            <span>{{ fieldValue(item.evaluationStatus, item.emotion || '情绪稳定') }}</span>
+            <span v-if="item.rating">评分 {{ item.rating }} 星</span>
+            <span v-else>{{ fieldValue(item.evaluationStatus, item.emotion || '情绪稳定') }}</span>
+            <span v-if="item.evaluationContent">{{ item.evaluationContent }}</span>
           </span>
           <span class="session-actions">
             <button
               type="button"
               class="ghost-mini danger"
               :disabled="!canClose(item)"
-              :title="canClose(item) ? '关闭会话' : '仅待客服关闭状态可关闭'"
+              :title="canClose(item) ? '从当前列表移除' : '已移除'"
               @click.stop="handleClose(item.id)"
             >
-              关闭
+              ×
             </button>
           </span>
         </div>

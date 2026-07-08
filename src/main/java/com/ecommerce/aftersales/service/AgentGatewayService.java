@@ -9,4 +9,8 @@ public interface AgentGatewayService {
     AgentGatewayDtos.ReviewImagesResponse reviewImages(AgentGatewayDtos.ReviewImagesRequest request);
 
     AgentGatewayDtos.ChatResponse chat(AgentGatewayDtos.ChatRequest request);
+
+    AgentGatewayDtos.AssistReplyResponse assistReply(AgentGatewayDtos.ChatRequest request);
+
+    AgentGatewayDtos.EmotionAnalyzeResponse analyzeEmotion(AgentGatewayDtos.EmotionAnalyzeRequest request);
 }

@@ -4,6 +4,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 public final class MerchantCsDtos {
 
@@ -17,6 +18,31 @@ public final class MerchantCsDtos {
         private String merchantCode;
         private String clientType;
         private String deviceId;
+    }
+
+    @Data
+    public static class RegisterRequest {
+        private String account;
+        private String password;
+        private String realName;
+        private String phone;
+        private String code;
+    }
+
+    @Data
+    public static class AuthCodeRequest {
+        private String account;
+        private String phone;
+        private String scene;
+    }
+
+    @Data
+    public static class ResetPasswordRequest {
+        private String account;
+        private String phone;
+        private String code;
+        private String newPassword;
+        private String confirmPassword;
     }
 
     @Data
@@ -99,6 +125,7 @@ public final class MerchantCsDtos {
     public static class SessionView {
         private Long id;
         private String sessionNo;
+        private String merchantCode;
         private Long userId;
         private Long orderId;
         private Long ticketId;
@@ -108,6 +135,9 @@ public final class MerchantCsDtos {
         private String level;
         private String wait;
         private String emotion;
+        private String emotionLabel;
+        private BigDecimal emotionScore;
+        private BigDecimal emotionConfidence;
         private String sourceChannel;
         private Integer serviceUnreadCount;
         private String orderNo;
@@ -133,8 +163,69 @@ public final class MerchantCsDtos {
         private String messageType;
         private String content;
         private String aiIntent;
+        private BigDecimal aiReplyConfidence;
         private String emotionLabel;
+        private BigDecimal emotionScore;
+        private BigDecimal emotionConfidence;
+        private String knowledgeQuery;
+        private String knowledgeRetrievalMode;
+        private Integer knowledgeHitCount;
+        private List<KnowledgeHitView> knowledgeHits;
+        private Map<String, Object> knowledgeTrace;
         private String createdAt;
+    }
+
+    @Data
+    public static class SessionAiAssistView {
+        private Long sessionId;
+        private RecommendationView recommendation;
+        private QuickReplyView staffSuggestion;
+        private List<QuickReplyView> quickReplies;
+        private String quickReplySource;
+        private String latestUserMessage;
+        private String sceneCode;
+        private String intentCode;
+        private String knowledgeQuery;
+        private String knowledgeRetrievalMode;
+        private List<KnowledgeHitView> knowledgeHits;
+        private Map<String, Object> handoffSummary;
+        private String handoffSummaryText;
+        private Map<String, String> conversationDigest;
+        private Map<String, Object> trace;
+    }
+
+    @Data
+    public static class RecommendationView {
+        private String text;
+        private BigDecimal confidence;
+        private String source;
+        private String reason;
+        private String intentCode;
+        private String sceneCode;
+        private String tone;
+    }
+
+    @Data
+    public static class QuickReplyView {
+        private String code;
+        private String label;
+        private String text;
+        private String sceneCode;
+        private String intentCode;
+        private String tone;
+        private BigDecimal score;
+    }
+
+    @Data
+    public static class KnowledgeHitView {
+        private String sourceType;
+        private String sourceCode;
+        private String title;
+        private String summary;
+        private String snippet;
+        private BigDecimal score;
+        private List<String> tags;
+        private Map<String, Object> metadata;
     }
 
     @Data
@@ -153,6 +244,7 @@ public final class MerchantCsDtos {
     public static class TicketView {
         private Long id;
         private String ticketNo;
+        private String merchantCode;
         private Long orderId;
         private String orderNo;
         private Long userId;
@@ -163,6 +255,7 @@ public final class MerchantCsDtos {
         private String applyRefundAmount;
         private String approvedRefundAmount;
         private String refundStatus;
+        private BigDecimal aiConfidence;
         private String priority;
         private String responsibility;
         private Long assignedServiceId;
@@ -197,9 +290,15 @@ public final class MerchantCsDtos {
     }
 
     @Data
+    public static class TicketCompleteRequest {
+        private String completeNote;
+    }
+
+    @Data
     public static class OrderView {
         private Long id;
         private String orderNo;
+        private String merchantCode;
         private Long userId;
         private String user;
         private String phone;
@@ -215,6 +314,7 @@ public final class MerchantCsDtos {
     public static class OrderDetail {
         private Long id;
         private String orderNo;
+        private String merchantCode;
         private String user;
         private String phone;
         private String address;
@@ -255,6 +355,7 @@ public final class MerchantCsDtos {
     @Data
     public static class ProductView {
         private Long id;
+        private String merchantCode;
         private String productName;
         private String productCode;
         private String category;

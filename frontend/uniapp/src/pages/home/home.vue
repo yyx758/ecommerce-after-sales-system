@@ -36,8 +36,8 @@
       </view>
       <view class="divider"></view>
       <view class="order-list">
-        <view v-for="item in orders" :key="item.id" class="order-item">
-          <image class="order-icon" :src="item.icon" mode="aspectFill" />
+        <view v-for="item in orders" :key="item.id" class="order-item" @tap="viewOrderDetail(item.id)">
+          <image class="order-icon" :src="normalizeImageUrl(item.icon)" mode="aspectFill" />
           <view class="order-content">
             <text class="order-title">{{ item.title }}</text>
             <text class="order-desc">{{ item.desc }}</text>
@@ -65,12 +65,13 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { request } from '../../utils/request'
+import { normalizeImageUrl, request } from '../../utils/request'
+import { resolveOrderAfterSalesSnapshot, resolveOrderDisplay } from '../../utils/orderStatus'
 
 const userInfo = ref({})
 const activeTab = ref('home')
 const allOrders = ref([])
-const allAfterSales = ref([])
+const RECENT_ORDER_LIMIT = 5
 
 const navItems = [
   { key: 'home', label: '首页', icon: '⌂' },
@@ -78,18 +79,12 @@ const navItems = [
   { key: 'mine', label: '我的', icon: '◒' }
 ]
 
-function getStatusClass(status) {
-  const map = { PAID: 'paid', SHIPPED: 'pending', RECEIVED: 'done', AFTERSALE: 'waiting', PROCESSING: 'processing', APPROVED: 'approved', REJECTED: 'rejected', COMPLETED: 'completed' }
-  return map[status] || ''
-}
-
 // 从API数据计算概览
 const overview = computed(() => {
   const orders = allOrders.value
-  const aftersales = allAfterSales.value
-  const received = orders.filter(o => o.status === 'RECEIVED').length
+  const received = orders.filter(o => o.status === 'RECEIVED' && !resolveOrderAfterSalesSnapshot(o).hasOpenAfterSales).length
   const shipped = orders.filter(o => o.status === 'SHIPPED').length
-  const aftersale = aftersales.filter(a => a.status === 'PROCESSING').length
+  const aftersale = orders.filter(o => resolveOrderAfterSalesSnapshot(o).hasOpenAfterSales).length
   const total = orders.length
   return [
     { label: '已收货订单', value: received, percent: total ? Math.round(received / total * 100) : 0 },
@@ -98,17 +93,18 @@ const overview = computed(() => {
   ]
 })
 
-// 从API数据渲染最近订单（取前3条）
+// 从API数据渲染最近订单
 const orders = computed(() => {
-  return allOrders.value.slice(0, 3).map(o => {
+  return allOrders.value.slice(0, RECENT_ORDER_LIMIT).map(o => {
     const item = o.items && o.items[0]
+    const display = resolveOrderDisplay(o)
     return {
       id: o.id,
       icon: item ? item.productImage : '',
       title: item ? item.productName : o.orderNo,
       desc: `${o.createTime.slice(0, 10)} | ¥${o.payAmount}`,
-      status: o.statusText,
-      statusClass: getStatusClass(o.status)
+      status: display.statusText,
+      statusClass: display.statusClass
     }
   })
 })
@@ -120,12 +116,8 @@ const initial = computed(() => {
 
 async function loadData() {
   try {
-    const [ordersData, afterSalesData] = await Promise.all([
-      request({ url: '/orders' }),
-      request({ url: '/aftersales' })
-    ])
+    const ordersData = await request({ url: '/orders' })
     allOrders.value = ordersData || []
-    allAfterSales.value = afterSalesData || []
   } catch (e) {
     console.error('加载数据失败', e)
   }
@@ -155,7 +147,7 @@ function goShop() {
 
 function viewOrderDetail(id) {
   uni.navigateTo({
-    url: '/pages/after-sale/detail?id=' + id
+    url: '/pages/after-sale/detail?orderId=' + id
   })
 }
 
@@ -169,7 +161,7 @@ function applyAfterSale() {
 function switchTab(key) {
   if (key === 'chat') {
     uni.navigateTo({
-      url: '/pages/chat/consult'
+      url: '/pages/chat/list'
     })
     return
   }
@@ -259,6 +251,7 @@ function logout() {
 }
 
 .link-btn {
+  margin: 0 0 0 auto;
   height: 48rpx;
   line-height: 48rpx;
   padding: 0 20rpx;

@@ -307,7 +307,7 @@ class MySQLRepository:
 
     def get_recent_messages(self, session_id: int, limit: int = 6) -> tuple[ConversationMessage, ...]:
         sql = """
-        SELECT role, content, create_time
+        SELECT role, content, create_time, emotion_label
         FROM chat_message
         WHERE session_id = %s
         ORDER BY create_time DESC, id DESC
@@ -318,7 +318,7 @@ class MySQLRepository:
                 cur.execute(sql, (session_id, limit))
                 rows = cur.fetchall()
         messages = []
-        for role, content, create_time in reversed(rows):
+        for role, content, create_time, emotion_label in reversed(rows):
             text = str(content or "").strip()
             if not text:
                 continue
@@ -327,6 +327,7 @@ class MySQLRepository:
                     role=self._normalize_chat_role(str(role or "")),
                     content=text,
                     create_time=create_time,
+                    emotion_label=str(emotion_label or "").strip().lower() or None,
                 )
             )
         return tuple(messages)

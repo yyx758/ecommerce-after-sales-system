@@ -1,0 +1,6 @@
+# Isolated Windows test environment for PaddleNLP Taskflow("sentiment_analysis")
+# Keep this separate from the main project venv to avoid breaking the Python agent runtime.
+numpy<2
+protobuf==3.20.2
+paddlepaddle==2.6.2
+paddlenlp==2.6.1

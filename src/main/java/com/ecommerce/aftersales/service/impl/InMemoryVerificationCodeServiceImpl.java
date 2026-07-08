@@ -5,7 +5,6 @@ import com.ecommerce.aftersales.service.VerificationCodeService;
 import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,15 +24,7 @@ public class InMemoryVerificationCodeServiceImpl implements VerificationCodeServ
         CodeRecord oldRecord = codeStore.get(key);
         LocalDateTime now = LocalDateTime.now();
         if (oldRecord != null && oldRecord.sendTime.plusSeconds(SEND_INTERVAL_SECONDS).isAfter(now)) {
-            int retryAfterSeconds = (int) Duration.between(
-                    now,
-                    oldRecord.sendTime.plusSeconds(SEND_INTERVAL_SECONDS)
-            ).getSeconds();
-            throw new BizException(
-                    429,
-                    "验证码发送过于频繁，请稍后再试",
-                    Map.of("retryAfterSeconds", Math.max(retryAfterSeconds, 1))
-            );
+            throw new BizException("验证码发送过于频繁，请稍后再试");
         }
 
         String code = String.format("%06d", RANDOM.nextInt(1_000_000));
@@ -56,11 +47,6 @@ public class InMemoryVerificationCodeServiceImpl implements VerificationCodeServ
             throw new BizException("验证码错误");
         }
         codeStore.remove(key);
-    }
-
-    @Override
-    public int getSendIntervalSeconds() {
-        return SEND_INTERVAL_SECONDS;
     }
 
     private String buildKey(String phone, String scene) {

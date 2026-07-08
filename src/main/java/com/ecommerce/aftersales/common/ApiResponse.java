@@ -1,6 +1,5 @@
 package com.ecommerce.aftersales.common;
 
-import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -30,9 +29,5 @@ public class ApiResponse<T> {
 
     public static <T> ApiResponse<T> fail(Integer code, String message) {
         return new ApiResponse<>(false, code, message, null);
-    }
-
-    public static <T> ApiResponse<T> fail(Integer code, String message, T data) {
-        return new ApiResponse<>(false, code, message, data);
     }
 }

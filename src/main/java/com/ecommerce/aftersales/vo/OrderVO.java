@@ -10,6 +10,8 @@ import java.util.List;
 public class OrderVO {
     private Long id;
     private String orderNo;
+    private Long merchantId;
+    private String merchantCode;
     private BigDecimal totalAmount;
     private BigDecimal payAmount;
     private String status;
@@ -19,6 +21,10 @@ public class OrderVO {
     private String receiverAddress;
     private String trackingCompany;
     private String trackingNo;
+    private Boolean hasOpenAfterSales;
+    private String afterSalesStatus;
+    private String afterSalesStatusText;
+    private String latestAfterSalesTicketNo;
     private LocalDateTime payTime;
     private LocalDateTime shipTime;
     private LocalDateTime receiveTime;

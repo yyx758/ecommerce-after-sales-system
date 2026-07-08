@@ -5,6 +5,7 @@ import com.ecommerce.aftersales.dto.LoginRequest;
 import com.ecommerce.aftersales.dto.RegisterRequest;
 import com.ecommerce.aftersales.dto.ResetPasswordRequest;
 import com.ecommerce.aftersales.dto.SendCodeRequest;
+import com.ecommerce.aftersales.dto.WechatLoginRequest;
 import com.ecommerce.aftersales.service.UserAuthService;
 import com.ecommerce.aftersales.service.VerificationCodeService;
 import com.ecommerce.aftersales.vo.LoginResponse;
@@ -40,6 +41,11 @@ public class UserAuthController {
     @PostMapping("/login")
     public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
         return ApiResponse.success("登录成功", userAuthService.login(request));
+    }
+
+    @PostMapping("/wechat/login")
+    public ApiResponse<LoginResponse> wechatLogin(@RequestBody WechatLoginRequest request) {
+        return ApiResponse.success("微信登录成功", userAuthService.wechatLogin(request));
     }
 
     @PostMapping("/password/reset")

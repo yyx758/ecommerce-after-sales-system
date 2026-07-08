@@ -8,6 +8,7 @@ from .handoff_agent import HandoffAgent
 from .intent_agent import IntentAgent
 from .models import (
     AfterSalesRequest,
+    ConversationMessage,
     EvidenceCheckResult,
     EmotionAnalysisResult,
     HumanHandoffResult,
@@ -38,11 +39,13 @@ class PolicyEngine:
         request: AfterSalesRequest,
         order: Order | None,
         *,
+        recent_history: tuple[ConversationMessage, ...] = (),
         recent_user_messages: tuple[str, ...] = (),
     ) -> EmotionAnalysisResult:
         return self.emotion_agent.analyze(
             request,
             order,
+            recent_history=recent_history,
             recent_user_messages=recent_user_messages,
         )
 

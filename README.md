@@ -1,41 +1,167 @@
 # ecommerce-after-sales-system
 
-当前项目已经统一成：
+电商售后客服与用户评价分析系统，包含 Spring Boot 后端、UniApp 用户端小程序、Vue3 商家客服端网页。
 
-- 前端：`frontend/uniapp`
-- 主后端：Spring Boot
-- AI 售后 Agent：仓库内 `python_agent/`
+## 项目结构
 
-前端不要直接连 Python，统一只连 Spring Boot 的 `/api/*`。
+```text
+.
+├── src                         # Spring Boot 后端
+├── sql                         # MySQL / pgvector 建表与种子数据
+├── docs                        # 接口与合并说明文档
+├── frontend
+│   ├── uniapp                  # 用户端小程序
+│   └── staff-auth-test-ui      # 商家客服端网页
+└── image                       # 原始商品图片素材
+```
 
-## 本地联调入口
+## 后端
 
-- Spring Boot API: `http://127.0.0.1:8081/api`
-- Python Agent API: `http://127.0.0.1:8000/api`
-- H5 调试端: `http://localhost:5173/#/`
+技术栈：
 
-## Agent 联调说明
+- Java 21
+- Spring Boot 3.3
+- MyBatis-Plus
+- MySQL
+- JWT
 
-Spring Boot 已经代理以下接口到 Python Agent：
+启动前先执行：
 
-- `GET /api/agent/health`
-- `POST /api/agent/review-images`
-- `POST /api/agent/chat`
+```sql
+sql/schema.sql
+sql/seed_data.sql
+```
 
-默认情况下，Spring Boot 启动时会自动尝试拉起仓库内的 `python_agent/web_demo.py`。
-如果你不想自动拉起，可以配置：
+`schema.sql` 是最终 MySQL 建表脚本，`seed_data.sql` 包含默认商家客服账号和商品目录数据。旧版本地库建议直接重建，避免字段和索引残留不一致。
 
-- `AGENT_AUTO_START=false`
-- `AGENT_PYTHON_COMMAND=python`
-- `AGENT_SCRIPT_PATH=python_agent/web_demo.py`
+本地环境变量可选：
 
-Python 代码已经放进当前仓库：
+```bash
+DB_USERNAME=root
+DB_PASSWORD=你的数据库密码
+JWT_SECRET=至少32字节的JWT密钥
+```
 
-- [python_agent/web_demo.py](D:\Users\林先锐\Desktop\大三实训\小程序端\ecommerce-after-sales-system-main\ecommerce-after-sales-system-main\python_agent\web_demo.py)
-- [python_agent/after_sales_agent](D:\Users\林先锐\Desktop\大三实训\小程序端\ecommerce-after-sales-system-main\ecommerce-after-sales-system-main\python_agent\after_sales_agent)
+启动：
 
-说明：
+```bash
+mvn.cmd spring-boot:run
+```
 
-- `python_agent/sample_images` 里的图片是售后凭证审核样例
-- 这些图片不应该作为商城商品图上传到数据库
-- 商品库里只保留正常售卖商品，例如手机、耳机、水壶
+默认地址：
+
+```text
+http://127.0.0.1:8080/api
+```
+
+## 用户端小程序
+
+位置：
+
+```text
+frontend/uniapp
+```
+
+安装依赖：
+
+```bash
+cd frontend/uniapp
+npm.cmd install
+```
+
+编译微信小程序：
+
+```bash
+npm.cmd run build:mp-weixin
+```
+
+微信开发者工具导入：
+
+```text
+frontend/uniapp/dist/build/mp-weixin
+```
+
+已支持：
+
+- 登录/注册/找回密码
+- 商品演示购买并生成订单
+- 订单列表
+- 售后申请、售后列表、售后详情
+- 用户咨询，消息写入后端会话表
+
+## 商家客服端
+
+位置：
+
+```text
+frontend/staff-auth-test-ui
+```
+
+安装依赖：
+
+```bash
+cd frontend/staff-auth-test-ui
+npm.cmd install
+```
+
+默认 mock 模式：
+
+```bash
+npm.cmd run dev
+```
+
+真实接口联调模式：
+
+```bash
+npm.cmd run dev:real
+```
+
+访问：
+
+```text
+http://127.0.0.1:5173
+```
+
+默认客服账号：
+
+```text
+账号: cs_demo
+密码: 123456
+商家编码: MERCHANT_DEMO
+```
+
+## 联调链路
+
+当前已打通的核心链路：
+
+```text
+商家端登录 -> sys_user.merchant_code
+商家端上传商品 -> product_info.merchant_code
+用户端演示购买 -> order_info / order_item 继承商品 merchant_code
+用户端申请售后 -> after_sales_ticket 继承订单 merchant_code
+用户端开启/发送对话 -> chat_session / chat_message 绑定订单/售后 merchant_code
+商家端在线会话/售后工单/订单/商品 -> 只读取当前商家 merchant_code 的数据
+```
+
+说明：当前客服端消息接收是接口刷新式联调，不是 WebSocket 实时推送；商家隔离已按 `merchantCode` 打通，默认演示商家编码是 `MERCHANT_DEMO`。
+
+## 主要文档
+
+- [模块整合总览（AI / 小程序 / 客服 / 管理端）](docs/module-integration-overview.md)
+- [情绪模块与架构边界](docs/emotion-module-integration-guide.md)
+- [AI 辅助功能](docs/ai-assist-module-guide.md)
+- [用户端小程序](docs/miniapp-module-guide.md)
+- [商家客服与管理员端](docs/merchant-admin-module-guide.md)
+- [已同步代码清单](docs/CODE_SYNC_MANIFEST.md)
+- [用户端 API 交互文档](docs/API-INTERACTION.md)
+- [商家客服端接口文档](docs/merchant-customer-service-api.md)
+- [用户端认证接口文档](docs/miniapp-user-auth-api.md)
+- [客服端合并记录](docs/merge-customer-service-ui.md)
+
+## 验证命令
+
+```bash
+mvn.cmd -q -DskipTests compile
+cd frontend/uniapp && npm.cmd run build:mp-weixin
+cd frontend/staff-auth-test-ui && npm.cmd run build
+```

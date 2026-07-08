@@ -32,6 +32,12 @@ class HandoffAgent:
                 triggered_reason = "用户连续两次要求人工客服。"
             elif evidence_result.evidence_complete:
                 triggered_reason = "用户已提供必要信息并要求人工客服介入。"
+        elif "jump_calm_to_angry" in emotion_result.escalation_signals:
+            triggered_reason = "用户情绪从平稳快速升级到愤怒，建议立即人工跟进。"
+        elif "consecutive_rises" in emotion_result.escalation_signals:
+            triggered_reason = "用户情绪连续上升，建议优先转人工处理。"
+        elif "repeated_human_request_without_relief" in emotion_result.escalation_signals:
+            triggered_reason = "用户多次催办且仍未缓和，建议转接人工客服。"
         elif emotion_result.need_human_priority and intent_result.intent in {Intent.COMPLAINT, Intent.GENERAL}:
             triggered_reason = "用户情绪较强烈，建议优先人工跟进。"
 
@@ -42,6 +48,8 @@ class HandoffAgent:
             "evidence": "、".join(order.uploaded_evidence if order else ()) or "暂无完整凭证",
             "risk": risk_result.risk_level.value,
             "userEmotion": emotion_result.label.value,
+            "emotionTrend": emotion_result.trend,
+            "emotionSignals": ",".join(emotion_result.escalation_signals) or "none",
             "suggestedAction": triggered_reason or "按常规流程处理",
         }
         return HumanHandoffResult(

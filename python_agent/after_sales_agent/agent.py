@@ -23,7 +23,13 @@ class ReturnAgent:
     def __init__(self, policy_engine: PolicyEngine | None = None) -> None:
         self.policy_engine = policy_engine or PolicyEngine()
 
-    def handle(self, request: AfterSalesRequest, order: Order | None) -> AgentResult:
+    def handle(
+        self,
+        request: AfterSalesRequest,
+        order: Order | None,
+        *,
+        recent_history=(),
+    ) -> AgentResult:
         if order is None and request.order_id is None:
             return AgentResult(
                 decision=Decision.ASK_FOR_INFO,
@@ -37,12 +43,20 @@ class ReturnAgent:
                 missing_fields=("订单信息",),
                 suggested_action="选择订单",
                 audit_note="missing_order_context",
-                emotion=self.policy_engine.analyze_emotion(request, order),
+                emotion=self.policy_engine.analyze_emotion(
+                    request,
+                    order,
+                    recent_history=recent_history,
+                ),
             )
 
         intent_result = self.policy_engine.classify_intent(request, order)
         scene = self.policy_engine.intent_agent.infer_scene_enum(request, intent_result.intent)
-        emotion_result = self.policy_engine.analyze_emotion(request, order)
+        emotion_result = self.policy_engine.analyze_emotion(
+            request,
+            order,
+            recent_history=recent_history,
+        )
 
         if intent_result.needs_clarification:
             options_text = "还是".join(intent_result.clarification_options)

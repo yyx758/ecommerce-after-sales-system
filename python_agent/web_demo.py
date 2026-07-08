@@ -813,6 +813,22 @@ class DemoHandler(BaseHTTPRequestHandler):
                     "need_human_priority": result.fallback_result.emotion.need_human_priority,
                     "reply_tone": result.fallback_result.emotion.reply_tone,
                     "comfort_prefix": result.fallback_result.emotion.comfort_prefix,
+                    "trend": result.fallback_result.emotion.trend,
+                    "consecutive_rises": result.fallback_result.emotion.consecutive_rises,
+                    "escalation_signals": list(result.fallback_result.emotion.escalation_signals),
+                    "timeline": [
+                        {
+                            "text": turn.text,
+                            "label": turn.label.value,
+                            "score": turn.score,
+                            "triggers": list(turn.triggers),
+                            "from_history": turn.from_history,
+                            "created_time": turn.created_time.strftime("%Y-%m-%d %H:%M:%S")
+                            if turn.created_time
+                            else None,
+                        }
+                        for turn in result.fallback_result.emotion.timeline
+                    ],
                 }
                 if result.fallback_result.emotion
                 else None,

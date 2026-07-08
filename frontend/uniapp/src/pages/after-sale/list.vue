@@ -30,7 +30,7 @@
         </view>
         <view class="divider"></view>
         <view class="card-body">
-          <image class="product-icon" :src="item.productIcon" mode="aspectFill" />
+          <image class="product-icon" :src="normalizeImageUrl(item.productIcon)" mode="aspectFill" />
           <view class="product-info">
             <text class="product-name">{{ item.productName }}</text>
             <text class="product-reason">原因：{{ item.reason }}</text>
@@ -40,8 +40,7 @@
         <view class="card-footer">
           <text class="card-time">{{ item.createTime }}</text>
           <view class="card-actions">
-            <button v-if="item.status === 'PROCESSING'" class="action-btn primary" @tap.stop="goChat(item.id)">联系客服</button>
-            <button v-if="item.status === 'APPROVED'" class="action-btn primary" @tap.stop="goChat(item.id)">查看详情</button>
+            <button v-if="item.status === 'pending' || item.status === 'processing'" class="action-btn primary" @tap.stop="goChat(item.id)">联系客服</button>
             <button class="action-btn" @tap.stop="goDetail(item.afterSaleNo)">查看详情</button>
           </view>
         </view>
@@ -61,43 +60,41 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { request } from '../../utils/request'
+import { normalizeImageUrl, request } from '../../utils/request'
+import { resolveAfterSalesTicketDisplay } from '../../utils/orderStatus'
 
 const activeTab = ref('all')
 const allAfterSales = ref([])
 
-function getStatusClass(status) {
-  const map = { PAID: 'paid', SHIPPED: 'pending', RECEIVED: 'done', AFTERSALE: 'waiting', PROCESSING: 'processing', APPROVED: 'approved', REJECTED: 'rejected', COMPLETED: 'completed' }
-  return map[status] || ''
-}
-
 const tabs = [
   { key: 'all', label: '全部' },
+  { key: 'pending', label: '待审核' },
   { key: 'processing', label: '处理中' },
-  { key: 'approved', label: '已通过' },
-  { key: 'rejected', label: '已拒绝' },
+  { key: 'rejected', label: '已驳回' },
   { key: 'completed', label: '已完成' }
 ]
 
 // 将API数据转换为页面需要的格式
 const afterSaleList = computed(() => {
-  return allAfterSales.value.map(a => ({
-    id: a.id,
-    orderId: a.orderId,
-    afterSaleNo: a.ticketNo,
-    productName: a.productName,
-    productIcon: a.productImage || '',
-    reason: a.reason,
-    status: a.status,
-    statusText: a.statusText,
-    statusClass: getStatusClass(a.status),
-    createTime: a.createTime ? a.createTime.slice(0, 10) : ''
-  }))
+  return allAfterSales.value.map(a => {
+    const display = resolveAfterSalesTicketDisplay(a)
+    return {
+      id: a.id,
+      afterSaleNo: a.ticketNo,
+      productName: a.productName,
+      productIcon: a.productImage || '',
+      reason: a.reason,
+      status: display.statusKey,
+      statusText: display.statusText,
+      statusClass: display.statusClass,
+      createTime: a.createTime ? a.createTime.slice(0, 10) : ''
+    }
+  })
 })
 
 const filteredList = computed(() => {
   if (activeTab.value === 'all') return afterSaleList.value
-  return afterSaleList.value.filter(item => item.status.toLowerCase() === activeTab.value)
+  return afterSaleList.value.filter(item => item.status === activeTab.value)
 })
 
 async function loadAfterSales() {
@@ -122,9 +119,7 @@ function goDetail(ticketNo) {
 }
 
 function goChat(id) {
-  const target = afterSaleList.value.find(item => item.id === id)
-  const orderId = target && target.orderId ? target.orderId : ''
-  uni.navigateTo({ url: '/pages/chat/consult?orderId=' + orderId })
+  uni.navigateTo({ url: '/pages/chat/consult?afterSaleId=' + id })
 }
 
 function applyAfterSale() {

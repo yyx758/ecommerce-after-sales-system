@@ -20,4 +20,8 @@ public class LoginResponse {
     private String avatarUrl;
 
     private Integer bindStatus;
+
+    private String openid;
+
+    private Boolean newUser;
 }

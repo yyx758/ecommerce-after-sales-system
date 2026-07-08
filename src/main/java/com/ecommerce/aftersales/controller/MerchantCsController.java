@@ -2,12 +2,16 @@ package com.ecommerce.aftersales.controller;
 
 import com.ecommerce.aftersales.common.ApiResponse;
 import com.ecommerce.aftersales.common.PageResult;
+import com.ecommerce.aftersales.dto.AgentGatewayDtos;
 import com.ecommerce.aftersales.dto.MerchantCsDtos.*;
+import com.ecommerce.aftersales.service.AgentPolicyCatalogService;
+import com.ecommerce.aftersales.service.KnowledgeRetrievalService;
 import com.ecommerce.aftersales.service.MerchantCsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequiredArgsConstructor
@@ -15,10 +19,28 @@ import java.util.List;
 public class MerchantCsController {
 
     private final MerchantCsService merchantCsService;
+    private final AgentPolicyCatalogService agentPolicyCatalogService;
+    private final KnowledgeRetrievalService knowledgeRetrievalService;
 
     @PostMapping("/auth/login")
     public ApiResponse<LoginResponse> login(@RequestBody LoginRequest request) {
         return ApiResponse.success("登录成功", merchantCsService.login(request));
+    }
+
+    @PostMapping("/auth/code")
+    public ApiResponse<Map<String, String>> sendAuthCode(@RequestBody AuthCodeRequest request) {
+        return ApiResponse.success("验证码发送成功", Map.of("code", merchantCsService.sendAuthCode(request)));
+    }
+
+    @PostMapping("/auth/register")
+    public ApiResponse<StaffProfile> register(@RequestBody RegisterRequest request) {
+        return ApiResponse.success("注册成功", merchantCsService.register(request));
+    }
+
+    @PostMapping("/auth/password/reset")
+    public ApiResponse<Void> resetPassword(@RequestBody ResetPasswordRequest request) {
+        merchantCsService.resetPassword(request);
+        return ApiResponse.success("密码重置成功", null);
     }
 
     @PostMapping("/auth/logout")
@@ -37,6 +59,41 @@ public class MerchantCsController {
         return ApiResponse.success("更新成功", merchantCsService.updateWorkStatus(request.getOnlineStatus()));
     }
 
+    @GetMapping("/agent-policy")
+    public ApiResponse<Map<String, Object>> getCurrentAgentPolicy() {
+        StaffProfile staff = merchantCsService.getCurrentStaff();
+        return ApiResponse.success("获取成功", agentPolicyCatalogService.getMerchantPolicy(staff.getMerchantCode()));
+    }
+
+    @PutMapping("/agent-policy")
+    public ApiResponse<Map<String, Object>> updateCurrentAgentPolicy(
+            @RequestBody AgentGatewayDtos.PolicyConfigUpdateRequest request
+    ) {
+        StaffProfile staff = merchantCsService.getCurrentStaff();
+        return ApiResponse.success("更新成功", agentPolicyCatalogService.updateMerchantPolicy(staff.getMerchantCode(), request));
+    }
+
+    @GetMapping("/knowledge/search")
+    public ApiResponse<AgentGatewayDtos.KnowledgeRetrieveResponse> searchKnowledge(
+            @RequestParam("keyword") String keyword,
+            @RequestParam(required = false) String productCategory,
+            @RequestParam(required = false) String scene,
+            @RequestParam(required = false) String intent,
+            @RequestParam(required = false) Integer topK,
+            @RequestParam(required = false) List<String> source
+    ) {
+        StaffProfile staff = merchantCsService.getCurrentStaff();
+        AgentGatewayDtos.KnowledgeRetrieveRequest request = new AgentGatewayDtos.KnowledgeRetrieveRequest();
+        request.setQuery(keyword);
+        request.setMerchantCode(staff.getMerchantCode());
+        request.setProductCategory(productCategory);
+        request.setScene(scene);
+        request.setIntent(intent);
+        request.setTopK(topK);
+        request.setSources(source);
+        return ApiResponse.success("检索成功", knowledgeRetrievalService.retrieve(request));
+    }
+
     @GetMapping("/dashboard/overview")
     public ApiResponse<DashboardOverview> dashboardOverview() {
         return ApiResponse.success("获取成功", merchantCsService.getDashboardOverview());
@@ -53,10 +110,12 @@ public class MerchantCsController {
     }
 
     @GetMapping("/sessions")
-    public ApiResponse<PageResult<SessionView>> listSessions(@RequestParam(defaultValue = "1") long page,
-                                                             @RequestParam(defaultValue = "10") long size,
-                                                             @RequestParam(required = false) String status,
-                                                             @RequestParam(required = false) String keyword) {
+    public ApiResponse<PageResult<SessionView>> listSessions(
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "10") long size,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword
+    ) {
         return ApiResponse.success("获取成功", merchantCsService.listSessions(page, size, status, keyword));
     }
 
@@ -65,14 +124,21 @@ public class MerchantCsController {
         return ApiResponse.success("获取成功", merchantCsService.getSession(sessionId));
     }
 
+    @GetMapping("/sessions/{sessionId}/ai-assist")
+    public ApiResponse<SessionAiAssistView> getSessionAiAssist(@PathVariable Long sessionId) {
+        return ApiResponse.success("获取成功", merchantCsService.getSessionAiAssist(sessionId));
+    }
+
     @GetMapping("/sessions/{sessionId}/messages")
     public ApiResponse<List<MessageView>> listSessionMessages(@PathVariable Long sessionId) {
         return ApiResponse.success("获取成功", merchantCsService.listSessionMessages(sessionId));
     }
 
     @PostMapping("/sessions/{sessionId}/messages")
-    public ApiResponse<MessageView> sendSessionMessage(@PathVariable Long sessionId,
-                                                       @RequestBody SendMessageRequest request) {
+    public ApiResponse<MessageView> sendSessionMessage(
+            @PathVariable Long sessionId,
+            @RequestBody SendMessageRequest request
+    ) {
         return ApiResponse.success("发送成功", merchantCsService.sendSessionMessage(sessionId, request));
     }
 
@@ -82,8 +148,10 @@ public class MerchantCsController {
     }
 
     @PostMapping("/sessions/{sessionId}/evaluation")
-    public ApiResponse<SessionView> submitSessionEvaluation(@PathVariable Long sessionId,
-                                                            @RequestBody EvaluationRequest request) {
+    public ApiResponse<SessionView> submitSessionEvaluation(
+            @PathVariable Long sessionId,
+            @RequestBody EvaluationRequest request
+    ) {
         return ApiResponse.success("提交成功", merchantCsService.submitSessionEvaluation(sessionId, request));
     }
 
@@ -93,11 +161,13 @@ public class MerchantCsController {
     }
 
     @GetMapping("/tickets")
-    public ApiResponse<PageResult<TicketView>> listTickets(@RequestParam(defaultValue = "1") long page,
-                                                           @RequestParam(defaultValue = "10") long size,
-                                                           @RequestParam(required = false) String status,
-                                                           @RequestParam(required = false) String type,
-                                                           @RequestParam(required = false) String keyword) {
+    public ApiResponse<PageResult<TicketView>> listTickets(
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "10") long size,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String keyword
+    ) {
         return ApiResponse.success("获取成功", merchantCsService.listTickets(page, size, status, type, keyword));
     }
 
@@ -112,22 +182,36 @@ public class MerchantCsController {
     }
 
     @PostMapping("/tickets/{ticketId}/approve")
-    public ApiResponse<TicketView> approveTicket(@PathVariable Long ticketId,
-                                                 @RequestBody TicketApproveRequest request) {
+    public ApiResponse<TicketView> approveTicket(
+            @PathVariable Long ticketId,
+            @RequestBody TicketApproveRequest request
+    ) {
         return ApiResponse.success("审核通过", merchantCsService.approveTicket(ticketId, request.getAuditOpinion()));
     }
 
     @PostMapping("/tickets/{ticketId}/reject")
-    public ApiResponse<TicketView> rejectTicket(@PathVariable Long ticketId,
-                                                @RequestBody TicketRejectRequest request) {
+    public ApiResponse<TicketView> rejectTicket(
+            @PathVariable Long ticketId,
+            @RequestBody TicketRejectRequest request
+    ) {
         return ApiResponse.success("驳回成功", merchantCsService.rejectTicket(ticketId, request.getRejectReason()));
     }
 
+    @PostMapping("/tickets/{ticketId}/complete")
+    public ApiResponse<TicketView> completeTicket(
+            @PathVariable Long ticketId,
+            @RequestBody TicketCompleteRequest request
+    ) {
+        return ApiResponse.success("处理完成", merchantCsService.completeTicket(ticketId, request.getCompleteNote()));
+    }
+
     @GetMapping("/orders")
-    public ApiResponse<PageResult<OrderView>> listOrders(@RequestParam(defaultValue = "1") long page,
-                                                         @RequestParam(defaultValue = "10") long size,
-                                                         @RequestParam(required = false) String status,
-                                                         @RequestParam(required = false) String keyword) {
+    public ApiResponse<PageResult<OrderView>> listOrders(
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "10") long size,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword
+    ) {
         return ApiResponse.success("获取成功", merchantCsService.listOrders(page, size, status, keyword));
     }
 
@@ -136,11 +220,18 @@ public class MerchantCsController {
         return ApiResponse.success("获取成功", merchantCsService.getOrder(orderId));
     }
 
+    @PostMapping("/orders/{orderId}/ship")
+    public ApiResponse<OrderDetail> shipOrder(@PathVariable Long orderId) {
+        return ApiResponse.success("发货成功", merchantCsService.shipOrder(orderId));
+    }
+
     @GetMapping("/notices")
-    public ApiResponse<PageResult<NoticeView>> listNotices(@RequestParam(defaultValue = "1") long page,
-                                                           @RequestParam(defaultValue = "10") long size,
-                                                           @RequestParam(required = false) String readStatus,
-                                                           @RequestParam(required = false) String level) {
+    public ApiResponse<PageResult<NoticeView>> listNotices(
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "10") long size,
+            @RequestParam(required = false) String readStatus,
+            @RequestParam(required = false) String level
+    ) {
         return ApiResponse.success("获取成功", merchantCsService.listNotices(page, size, readStatus, level));
     }
 
@@ -150,10 +241,12 @@ public class MerchantCsController {
     }
 
     @GetMapping("/products")
-    public ApiResponse<PageResult<ProductView>> listProducts(@RequestParam(defaultValue = "1") long page,
-                                                             @RequestParam(defaultValue = "10") long size,
-                                                             @RequestParam(required = false) String status,
-                                                             @RequestParam(required = false) String keyword) {
+    public ApiResponse<PageResult<ProductView>> listProducts(
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "10") long size,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword
+    ) {
         return ApiResponse.success("获取成功", merchantCsService.listProducts(page, size, status, keyword));
     }
 
@@ -168,14 +261,18 @@ public class MerchantCsController {
     }
 
     @PutMapping("/products/{productId}")
-    public ApiResponse<ProductView> updateProduct(@PathVariable Long productId,
-                                                  @RequestBody ProductUpsertRequest request) {
+    public ApiResponse<ProductView> updateProduct(
+            @PathVariable Long productId,
+            @RequestBody ProductUpsertRequest request
+    ) {
         return ApiResponse.success("更新成功", merchantCsService.updateProduct(productId, request));
     }
 
     @PutMapping("/products/{productId}/status")
-    public ApiResponse<ProductView> updateProductStatus(@PathVariable Long productId,
-                                                        @RequestBody ProductStatusRequest request) {
+    public ApiResponse<ProductView> updateProductStatus(
+            @PathVariable Long productId,
+            @RequestBody ProductStatusRequest request
+    ) {
         return ApiResponse.success("更新成功", merchantCsService.updateProductStatus(productId, request.getStatus()));
     }
 }

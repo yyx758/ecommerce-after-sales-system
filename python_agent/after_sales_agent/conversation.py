@@ -59,7 +59,11 @@ class ReturnConversationService:
             visual_evidence=self._extract_visual_evidence(image_review),
             visual_review_failed=self._visual_review_failed(context.attachments, image_review),
         )
-        result = self.agent.handle(request, context.selected_order)
+        result = self.agent.handle(
+            request,
+            context.selected_order,
+            recent_history=context.recent_history,
+        )
         if image_review and image_review.success:
             return AgentResult(
                 decision=result.decision,

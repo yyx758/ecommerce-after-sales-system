@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <view class="auth-page">
     <!-- 全屏渐变背景 -->
     <view class="bg-layer">
@@ -11,8 +11,9 @@
       <view class="bg-glow glow-3" />
     </view>
 
-    <!-- 主内容区 -->
-    <view class="content">
+    <!-- 主内容区（可滚动，避免微信登录被裁切） -->
+    <scroll-view scroll-y class="content-scroll" :show-scrollbar="false">
+      <view class="content">
       <!-- 状态栏占位 -->
       <view class="status-bar" :style="{ height: statusBarHeight + 'px' }" />
       <!-- 顶部品牌区 -->
@@ -115,8 +116,44 @@
         <text class="btn-text">{{ submitText }}</text>
       </button>
 
+      <!-- 微信登录：紧跟登录按钮下方 -->
+      <view v-if="mode === 'login'" class="wechat-section">
+        <view class="divider-row">
+          <view class="divider-line" />
+          <text class="divider-text">或</text>
+          <view class="divider-line" />
+        </view>
+
+        <view class="wechat-actions">
+          <button class="wechat-btn" :loading="wechatSubmitting" @tap="handleWechatLogin">
+            <view class="wechat-logo">
+              <text class="wechat-logo-text">微信</text>
+            </view>
+            <text class="wechat-text">微信一键登录</text>
+          </button>
+          <button class="scan-btn" @tap="openScanModal">
+            <text class="scan-btn-icon">⌁</text>
+            <text class="scan-btn-text">模拟扫码</text>
+          </button>
+        </view>
+      </view>
+
       <!-- 底部提示 -->
       <text class="footer-tip">登录后可查看订单、售后工单、咨询记录和系统通知</text>
+      </view>
+    </scroll-view>
+
+    <!-- 模拟扫码授权弹窗 -->
+    <view v-if="showScanModal" class="scan-mask" @tap="closeScanModal">
+      <view class="scan-modal" @tap.stop>
+        <text class="scan-title">模拟微信扫码授权</text>
+        <view class="scan-qrcode">
+          <view v-for="n in 49" :key="n" class="scan-cell" :class="{ dark: n % 3 === 0 }" />
+        </view>
+        <text class="scan-tip">开发沙盒环境，无需真实扫码</text>
+        <button class="scan-confirm-btn" :loading="wechatSubmitting" @tap="confirmScanLogin">确认授权并登录</button>
+        <button class="scan-cancel-btn" @tap="closeScanModal">取消</button>
+      </view>
     </view>
   </view>
 </template>
@@ -124,12 +161,18 @@
 <script setup>
 import { computed, reactive, ref, onMounted, onUnmounted } from 'vue'
 import { request } from '../../utils/request'
+import {
+  loginWithWechatSandbox,
+  persistLoginSession
+} from '../../utils/clientConfig'
 
 const statusBarHeight = ref(0)
 const mode = ref('login')
 const submitting = ref(false)
+const wechatSubmitting = ref(false)
 const sendingCode = ref(false)
 const codeCountdown = ref(0)
+const showScanModal = ref(false)
 let countdownTimer = null
 
 const modes = [
@@ -188,14 +231,9 @@ async function sendCode() {
       data: { phone: form.phone, scene }
     })
     const code = data && data.code
-    const countdownSeconds = Number(data && data.countdownSeconds) || 60
-    uni.showToast({ title: code ? `验证码 ${code}` : '验证码已发送', icon: 'none', duration: 3000 })
-    startCountdown(countdownSeconds)
+    uni.showToast({ title: code ? `验证码 ${code}` : '验证码已发送', icon: 'none' })
+    startCountdown()
   } catch (error) {
-    const retryAfterSeconds = Number(error?.data?.retryAfterSeconds || 0)
-    if (retryAfterSeconds > 0) {
-      startCountdown(retryAfterSeconds)
-    }
     uni.showToast({ title: error.message, icon: 'none' })
   } finally {
     sendingCode.value = false
@@ -217,8 +255,7 @@ async function submit() {
   try {
     const data = await request(buildRequest())
     if (mode.value === 'login') {
-      uni.setStorageSync('token', data.token)
-      uni.setStorageSync('userInfo', data)
+      persistLoginSession(data)
       uni.redirectTo({ url: '/pages/home/home' })
       return
     }
@@ -229,6 +266,51 @@ async function submit() {
   } finally {
     submitting.value = false
   }
+}
+
+async function handleWechatLogin() {
+  if (wechatSubmitting.value) return
+  wechatSubmitting.value = true
+  try {
+    const data = await loginWithWechatSandbox()
+    finishWechatLogin(data)
+  } catch (error) {
+    uni.showToast({ title: error.message || '微信登录失败', icon: 'none' })
+  } finally {
+    wechatSubmitting.value = false
+  }
+}
+
+function openScanModal() {
+  showScanModal.value = true
+}
+
+function closeScanModal() {
+  if (wechatSubmitting.value) return
+  showScanModal.value = false
+}
+
+async function confirmScanLogin() {
+  if (wechatSubmitting.value) return
+  wechatSubmitting.value = true
+  try {
+    const data = await loginWithWechatSandbox({ mockScan: true })
+    showScanModal.value = false
+    finishWechatLogin(data)
+  } catch (error) {
+    uni.showToast({ title: error.message || '模拟扫码登录失败', icon: 'none' })
+  } finally {
+    wechatSubmitting.value = false
+  }
+}
+
+function finishWechatLogin(data) {
+  persistLoginSession(data)
+  const tip = data.newUser ? '微信账号已创建' : '微信登录成功'
+  uni.showToast({ title: tip, icon: 'success' })
+  setTimeout(() => {
+    uni.redirectTo({ url: '/pages/home/home' })
+  }, 300)
 }
 
 function buildRequest() {
@@ -249,8 +331,8 @@ function buildRequest() {
   return { url: '/miniapp/auth/login', method: 'POST', data: { phone: form.phone, password: form.password } }
 }
 
-function startCountdown(seconds = 60) {
-  codeCountdown.value = seconds
+function startCountdown() {
+  codeCountdown.value = 60
   if (countdownTimer) clearInterval(countdownTimer)
   countdownTimer = setInterval(() => {
     codeCountdown.value -= 1
@@ -282,7 +364,12 @@ function validatePassword() {
 .auth-page {
   position: relative;
   min-height: 100vh;
-  overflow: hidden;
+}
+
+.content-scroll {
+  position: relative;
+  z-index: 1;
+  height: 100vh;
 }
 
 /* ===== 渐变背景层 ===== */
@@ -406,8 +493,9 @@ function validatePassword() {
 .content {
   position: relative;
   z-index: 1;
-  padding: 0 48rpx;
+  padding: 0 48rpx 80rpx;
   padding-top: 40rpx;
+  box-sizing: border-box;
 }
 
 .status-bar {
@@ -419,8 +507,8 @@ function validatePassword() {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  margin-bottom: 80rpx;
-  margin-top: 80rpx;
+  margin-bottom: 48rpx;
+  margin-top: 48rpx;
 }
 
 .brand-name {
@@ -521,7 +609,7 @@ function validatePassword() {
 .submit-btn {
   width: 100%;
   height: 100rpx;
-  margin-top: 56rpx;
+  margin-top: 40rpx;
   border-radius: 50rpx;
   background: rgba(255, 255, 255, 0.9);
   display: flex;
@@ -546,5 +634,176 @@ function validatePassword() {
   color: rgba(255, 255, 255, 0.3);
   font-size: 22rpx;
   line-height: 1.6;
+}
+
+/* ===== 微信登录沙盒 ===== */
+.wechat-section {
+  margin-top: 28rpx;
+}
+
+.wechat-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.divider-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 24rpx;
+}
+
+.divider-line {
+  flex: 1;
+  height: 1rpx;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.divider-text {
+  margin: 0 24rpx;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 24rpx;
+}
+
+.wechat-btn {
+  width: 100%;
+  height: 96rpx;
+  border-radius: 48rpx;
+  background: #07c160;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  box-shadow: 0 8rpx 24rpx rgba(7, 193, 96, 0.35);
+}
+
+.wechat-logo {
+  width: 48rpx;
+  height: 48rpx;
+  margin-right: 16rpx;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wechat-logo-text {
+  color: #07c160;
+  font-size: 18rpx;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.wechat-text {
+  color: #ffffff;
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.scan-btn {
+  width: 100%;
+  height: 88rpx;
+  border-radius: 44rpx;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1rpx solid rgba(255, 255, 255, 0.22);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+}
+
+.scan-btn-icon {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 32rpx;
+  line-height: 1;
+}
+
+.scan-btn-text {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.scan-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48rpx;
+}
+
+.scan-modal {
+  width: 100%;
+  max-width: 620rpx;
+  padding: 40rpx 32rpx 32rpx;
+  border-radius: 28rpx;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.scan-title {
+  display: block;
+  text-align: center;
+  color: #111827;
+  font-size: 32rpx;
+  font-weight: 700;
+}
+
+.scan-qrcode {
+  width: 320rpx;
+  height: 320rpx;
+  margin: 32rpx auto;
+  padding: 16rpx;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 16rpx;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6rpx;
+  box-sizing: border-box;
+}
+
+.scan-cell {
+  background: #f3f4f6;
+  border-radius: 4rpx;
+}
+
+.scan-cell.dark {
+  background: #111827;
+}
+
+.scan-tip {
+  display: block;
+  text-align: center;
+  color: #6b7280;
+  font-size: 24rpx;
+  margin-bottom: 28rpx;
+}
+
+.scan-confirm-btn {
+  width: 100%;
+  height: 88rpx;
+  line-height: 88rpx;
+  border-radius: 44rpx;
+  background: #07c160;
+  color: #ffffff;
+  font-size: 30rpx;
+  font-weight: 600;
+  border: none;
+  margin-bottom: 16rpx;
+}
+
+.scan-cancel-btn {
+  width: 100%;
+  height: 80rpx;
+  line-height: 80rpx;
+  border-radius: 40rpx;
+  background: #f3f4f6;
+  color: #374151;
+  font-size: 28rpx;
+  border: none;
 }
 </style>

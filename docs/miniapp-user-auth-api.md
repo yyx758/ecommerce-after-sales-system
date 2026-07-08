@@ -101,7 +101,51 @@
 Authorization: Bearer jwt-token
 ```
 
-## 4. 找回密码
+## 4. 微信登录（开发沙盒）
+
+`POST /miniapp/auth/wechat/login`
+
+仅在 `app.miniapp.client.wechat-sandbox.enabled=true` 时可用，用于本地联调模拟 `wx.login`，无需真实微信 AppID。
+
+请求体（二选一）：
+
+```json
+{
+  "code": "sandbox_code_alice"
+}
+```
+
+或直接指定沙盒 openid：
+
+```json
+{
+  "openid": "sandbox_wx_alice",
+  "nickname": "沙盒微信-Alice",
+  "avatarUrl": ""
+}
+```
+
+成功响应：
+
+```json
+{
+  "code": 200,
+  "message": "微信登录成功",
+  "data": {
+    "token": "jwt-token",
+    "userId": 1,
+    "phone": "19900000001",
+    "nickname": "沙盒微信-Alice",
+    "avatarUrl": "",
+    "openid": "sandbox_wx_alice",
+    "newUser": false
+  }
+}
+```
+
+沙盒用户列表可通过 `GET /miniapp/public/client-config` 的 `wechatSandbox.users` 字段获取。
+
+## 5. 找回密码
 
 `POST /miniapp/auth/password/reset`
 

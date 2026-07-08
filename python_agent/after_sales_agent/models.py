@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -11,15 +11,17 @@ class OrderStatus(str, Enum):
     SHIPPED = "shipped"
     DELIVERED = "delivered"
     COMPLETED = "completed"
-    AFTER_SALES = "after_sales"
     REFUNDED = "refunded"
 
 
 class AfterSalesType(str, Enum):
     REFUND_ONLY = "refund_only"
-    RETURN_AND_REFUND = "return_and_refund"
-    EXCHANGE = "exchange"
-    REPAIR = "repair"
+    RETURN_REFUND = "return_refund"
+    RETURN_AND_REFUND = "return_refund"
+    REISSUE = "reissue"
+    EXCHANGE = "reissue"
+    PARTIAL_REFUND = "partial_refund"
+    REPAIR = "return_refund"
 
 
 class AfterSalesStatus(str, Enum):
@@ -34,6 +36,7 @@ class AfterSalesStatus(str, Enum):
     REFUND_PROCESSING = "refund_processing"
     EXCHANGE_PROCESSING = "exchange_processing"
     COMPLETED = "completed"
+    CLOSED = "closed"
     HUMAN_PROCESSING = "human_processing"
 
 
@@ -75,6 +78,7 @@ class RiskLevel(str, Enum):
 
 
 class EmotionLabel(str, Enum):
+    SATISFIED = "satisfied"
     CALM = "calm"
     ANXIOUS = "anxious"
     DISSATISFIED = "dissatisfied"
@@ -121,6 +125,7 @@ class Order:
     created_at: datetime
     shipped_at: Optional[datetime] = None
     delivered_at: Optional[datetime] = None
+    merchant_code: str = "MERCHANT_DEMO"
     items: tuple[OrderItem, ...] = ()
     has_open_after_sales: bool = False
     after_sales_status: AfterSalesStatus = AfterSalesStatus.NOT_APPLIED
@@ -146,6 +151,12 @@ class AfterSalesRequest:
     attachments: tuple[Attachment, ...] = ()
     visual_evidence: tuple[str, ...] = ()
     visual_review_failed: bool = False
+    llm_intent: Optional[Intent] = None
+    llm_scene: Optional[AfterSalesScene] = None
+    llm_confidence: float = 0.0
+    normalized_issue: Optional[str] = None
+    quality_description_detailed: Optional[bool] = None
+    evidence_consistent: Optional[bool] = None
     requested_at: datetime = field(default_factory=datetime.now)
 
 
@@ -155,7 +166,7 @@ class IntentResult:
     next_agent: str
     need_human: bool
     keywords: tuple[str, ...] = ()
-    score: int = 0
+    score: float = 0
     needs_clarification: bool = False
     clarification_options: tuple[str, ...] = ()
     fallback: bool = False
@@ -184,7 +195,7 @@ class RiskAssessmentResult:
     allow_auto_refund: bool
     need_human_review: bool
     reason: str
-    score: int
+    score: float
 
 
 @dataclass(frozen=True)
@@ -197,7 +208,8 @@ class HumanHandoffResult:
 @dataclass(frozen=True)
 class EmotionAnalysisResult:
     label: EmotionLabel
-    score: int
+    score: float
+    confidence: float
     triggers: tuple[str, ...]
     need_human_priority: bool
     reply_tone: str
@@ -284,3 +296,4 @@ def days_between(start: Optional[datetime], end: datetime) -> Optional[int]:
 
 def today() -> date:
     return datetime.now().date()
+

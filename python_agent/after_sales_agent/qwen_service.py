@@ -46,6 +46,7 @@ class QwenReturnService:
         fallback_result = self.rule_agent.handle(
             request=self._build_request(context),
             order=context.selected_order,
+            recent_history=context.recent_history,
         )
         if context.selected_order is None or self._should_skip_model(fallback_result):
             return LLMConversationResult(

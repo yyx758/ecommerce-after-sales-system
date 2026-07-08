@@ -1,0 +1,8 @@
+pymysql==1.1.2
+
+# Optional local sentiment model stack (Windows compatibility still depends on paddle/paddlenlp runtime)
+paddlepaddle==3.3.1
+paddlenlp==2.6.1.post
+
+# For PaddleNLP Taskflow("sentiment_analysis") testing on Windows, prefer the isolated
+# python_agent/requirements-taskflow-windows.txt environment instead of this main venv.
