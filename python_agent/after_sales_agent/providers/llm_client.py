@@ -392,7 +392,7 @@ class OpenAICompatibleClient:
         except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
             raise LLMResponseParseError("Model response content cannot be parsed as JSON") from exc
 
-    def chat_multimodal_json(self, *, system_prompt: str, user_text: str, image_urls: list[str], temperature: float = 0.1, max_tokens: int = 180) -> dict[str, Any]:
+    def chat_multimodal_json(self, *, system_prompt: str, user_text: str, image_urls: list[str], temperature: float = 0.1, max_tokens: int = 180, schema: dict[str, Any] | None = None) -> dict[str, Any]:
         if self._client.primary.provider == "ollama":
             content: Any = user_text
             images = [self._extract_base64_image(value) for value in image_urls]
@@ -401,9 +401,8 @@ class OpenAICompatibleClient:
             content = [{"type": "text", "text": user_text}]
             content.extend({"type": "image_url", "image_url": {"url": value}} for value in image_urls)
             messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": content}]
-        # Vision models occasionally truncate a large structured answer. Keep one
-        # diagnostic retry with a larger budget, and log only a bounded response
-        # excerpt so the failure can be diagnosed without dumping the full payload.
+        # Vision models occasionally truncate structured answers. Retry once with
+        # a larger budget; log only the error type, never response content.
         retry_max_tokens = max(max_tokens, 320)
         for attempt, request_max_tokens in enumerate((max_tokens, retry_max_tokens), start=1):
             response = self.chat(messages, temperature=temperature, max_tokens=request_max_tokens)
@@ -413,21 +412,22 @@ class OpenAICompatibleClient:
                 parsed = raw if isinstance(raw, dict) else json.loads(raw)
                 if not isinstance(parsed, dict):
                     raise TypeError(f"expected JSON object, got {type(parsed).__name__}")
+                if schema is not None:
+                    validate(instance=parsed, schema=schema)
                 return parsed
-            except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
-                raw_excerpt = str(raw if raw is not None else response)[:4000]
+            except (KeyError, IndexError, TypeError, json.JSONDecodeError, ValidationError) as exc:
                 logger.warning(
-                    "vision_json_parse_failed model=%s attempt=%d max_tokens=%d error=%s raw_excerpt=%s",
+                    "vision_json_validation_failed model=%s attempt=%d max_tokens=%d error_type=%s",
                     self.config.model,
                     attempt,
                     request_max_tokens,
-                    type(exc).__name__ + ": " + str(exc),
-                    raw_excerpt,
+                    type(exc).__name__,
                 )
                 if attempt == 2:
                     raise LLMResponseParseError(
-                        f"Vision model response cannot be parsed as JSON after {attempt} attempts"
+                        f"Vision model response failed JSON validation after {attempt} attempts"
                     ) from exc
+                messages[0]["content"] = system_prompt + "\n上次输出不符合 JSON 字段约束，请严格按字段类型和取值重新输出完整 JSON。"
 
     @staticmethod
     def _extract_base64_image(image_url: str) -> str:

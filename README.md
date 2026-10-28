@@ -4,10 +4,10 @@
 
 ## 项目亮点
 
-- **单 Agent + 渐进式 Skill 架构：** 按咨询、补证、正式审核和人工转接逐级加载 Skill 元数据、指令与参考资源，使启动阶段 Skill 正文驻留量降低 80.7%，正式审核分支注入的 Skill 指令量降低约 50%；通过内容哈希固化 Skill 版本，并以确定性 Gate 和 Java 状态机约束审核决策。
+- **单 Agent + 渐进式 Skill 架构：** 按咨询、补证、正式审核和人工转接按需加载 Skill；正式审核由一张 LangGraph 图共享可信工单上下文，并行检索政策与审核凭证，汇合为一份评估，再由确定性 Gate 和 Java 状态机约束审核决策。
 - **异步审核可靠性：** 基于 Transactional Outbox 解耦业务事务与 Kafka 发布，通过事件幂等键、Redis TTL 续期与超时接管处理重复消费和消费者崩溃；结合有限重试、DLQ 与人工审核降级，实现至少一次投递下的可恢复处理。
 - **知识工程与 Agentic RAG：** 面向 PDF、Markdown 和 TXT 设计标题层级感知的结构化递归切片，保留段落、列表、表格和页码语义；基于 pgvector、pg_trgm 与 RRF 构建混合检索，在知识覆盖不足时生成最多 3 条互补 Query，执行一次有界并行重试与融合排序。
-- **RAG 质量治理：** 构建覆盖检索、上下文、生成与业务路由的分层评测体系，结合数据契约校验定位链路质量损耗；在 60 条离线评测集上实现 Faithfulness 85.99%、Answer Relevancy 90.93%，True Hallucination Rate 降至 5%。
+- **RAG 质量治理：** 构建覆盖检索、上下文、生成与业务路由的分层评测体系，结合数据契约校验定位链路质量损耗；[60 条样本的离线报告](docs/rag-optimization-report.md)记录了 Faithfulness 85.99%、Answer Relevancy 90.93% 和 True Hallucination Rate 5%。
 - **全链路可观测：** 以 Trace ID 串联 Java、Outbox、Kafka、Agent 工具调用与结果落库，并通过 Prometheus + Grafana 监控请求、延迟、错误、RAG 降级、幂等处理、DLQ 和人工转接等关键指标。
 
 ## 一、总体架构
@@ -30,11 +30,12 @@ flowchart TB
     end
 
     subgraph Agent["智能层：Python LangGraph"]
-        CHAT["唯一 AfterSalesAgent"]
-        REVIEW["正式审核 Skill"]
-        POLICY["Policy Retrieval Workflow"]
-        EVIDENCE["Evidence Review Workflow"]
-        ESCALATE["复杂案例综合节点"]
+        CHAT["AfterSalesAgent<br/>唯一调度主体"]
+        REVIEW["formal-review Skill<br/>单张正式审核图"]
+        INPUT["输入校验 / 补证等待"]
+        POLICY["政策检索节点"]
+        EVIDENCE["凭证审核节点"]
+        MERGE["review_synthesis<br/>单份评估与提案"]
         GATE["Deterministic Gate"]
         TOOL["受控工具注册表"]
     end
@@ -60,12 +61,16 @@ flowchart TB
     FSM --> MYSQL
     FSM --> OUTBOX --> KAFKA
     API --> CHAT
-    KAFKA --> REVIEW
-    REVIEW --> POLICY
-    REVIEW --> EVIDENCE
-    POLICY --> ESCALATE
-    EVIDENCE --> ESCALATE
-    ESCALATE --> GATE
+    KAFKA --> CHAT
+    CHAT --> REVIEW
+    REVIEW --> INPUT
+    INPUT -->|完整| POLICY
+    INPUT -->|完整| EVIDENCE
+    INPUT -->|缺失| IAPI
+    POLICY --> MERGE
+    EVIDENCE --> MERGE
+    MERGE --> GATE
+    GATE --> IAPI
     POLICY --> PG
     POLICY --> MODEL
     EVIDENCE --> MODEL
@@ -96,7 +101,7 @@ flowchart TB
 ## 二、完整业务链路
 
 ```mermaid
-flowchart LR
+flowchart TD
     START["用户进入商品、订单或售后入口"] --> RESOLVE["Java 解析用户、商家、订单、工单与 sessionId"]
 
     RESOLVE --> TYPE{"请求类型"}
@@ -114,23 +119,28 @@ flowchart LR
     TX --> PUB["Outbox Publisher"]
     PUB --> KAFKA["Kafka Review Request"]
     KAFKA --> CLAIM["Redis event_id 幂等认领"]
-    CLAIM --> MULTI["AfterSalesAgent 直接调度正式审核 Skill"]
-    MULTI --> ESC{"是否需要复杂复核？"}
-    ESC -->|否| GATE{"确定性 Gate"}
-    ESC -->|政策/证据冲突、检索不足或高风险| REVIEWER["复杂案例综合节点"]
-    REVIEWER --> GATE
-    GATE -->|满足可信政策、凭证和置信度| APPROVE["提交 APPROVE 建议"]
-    GATE -->|缺少必要凭证| MORE["请求补充凭证"]
-    GATE -->|风险、不确定或服务失败| HUMAN["提交 MANUAL_REVIEW_REQUIRED"]
-    APPROVE --> JAVA_APPLY["Java 校验状态与 review_request_id"]
-    MORE --> JAVA_APPLY
+    CLAIM --> REVIEW["AfterSalesAgent 调用单张正式审核图<br/>从 Java 读取可信工单上下文"]
+    REVIEW --> INPUT{"问题描述与附件齐全？"}
+    INPUT -->|否| MORE["Java 记录补证请求并暂停审核"]
+    MORE --> RESUME["新凭证事件恢复后重读 Java 上下文"]
+    RESUME --> INPUT
+    INPUT -->|是| POLICY["政策检索节点"]
+    INPUT -->|是| VISION["凭证审核节点"]
+    POLICY --> MERGE["review_synthesis<br/>一份 ReviewAssessment + 提案"]
+    VISION --> MERGE
+    MERGE --> GATE{"确定性 Gate"}
+    GATE -->|满足自动通过条件| APPROVE["提交 APPROVE 建议"]
+    GATE -->|风险、不确定或失败| HUMAN["提交 MANUAL_REVIEW_REQUIRED"]
+    APPROVE --> JAVA_APPLY["Java 校验 review_request_id 与证据版本"]
     HUMAN --> JAVA_APPLY
-    JAVA_APPLY --> RESULT["MySQL 保存最终结果并更新会话快照"]
-    RESULT --> NOTICE["WebSocket / 历史消息通知两端"]
+    JAVA_APPLY --> RESULT["MySQL 保存审核结果并更新会话快照"]
+    MORE --> NOTICE["WebSocket / 历史消息通知两端"]
+    RESULT --> NOTICE
 
     TYPE -->|商家处理| STAFF["Java 校验商家权限"]
     STAFF --> ACTION["回复会话、审核工单、管理订单商品"]
-    ACTION --> RESULT
+    ACTION --> STAFF_SAVE["Java 持久化操作结果"]
+    STAFF_SAVE --> NOTICE
 ```
 
 这条链路有两个关键约束：
@@ -140,16 +150,17 @@ flowchart LR
 
 ## 三、单 Agent 与能力分层
 
-系统只有一个自主调度主体 `AfterSalesAgent`。聊天请求由它选择会话 Skill；类型明确的 Kafka 正式审核事件直接调用正式审核 Skill，不再执行一次 LLM 意图识别。其余模块是 Skill、Workflow、Tool 或确定性 Gate，不是独立 Agent。
+系统只有一个自主调度主体 `AfterSalesAgent`。聊天请求由它选择会话 Skill；类型明确的 Kafka 正式审核事件直接调用 `FormalReviewWorkflow`，不再执行一次 LLM 意图识别。正式审核的政策检索和凭证审核是图内节点，不是两个 Workflow 或独立 Agent。
 
 | 组件 | 触发方式 | 目标 | 是否可直接形成业务结果 |
 | --- | --- | --- | --- |
 | AfterSalesAgent | HTTP 聊天或 Kafka 正式审核事件 | 识别聊天意图并调度 Skill；已知事件直接路由 | 否 |
 | 正式审核 Skill | Kafka 售后审核事件 | 编排政策检索、凭证审核、复杂综合与 Gate | 否，只生成并提交建议 |
-| Policy Retrieval Workflow | 正式审核 Skill 内部派发 | 检索可信政策，判断政策覆盖与适用性 | 否，输出 `PolicyAssessment` |
-| Evidence Review Workflow | 正式审核 Skill 内部派发 | 审核图片凭证，识别一致性、缺失项和风险 | 否，输出 `EvidenceAssessment` |
-| 复杂案例综合节点 | 政策/证据冲突、检索不足或视觉不确定时触发 | 仅综合结构化结果并生成复核提案 | 否，不能调用工具或绕过 Gate |
-| Deterministic Gate | Workflow 结果汇合后执行 | 用确定性规则选择自动通过、补证或人工审核建议 | 只选择提交动作，最终仍由 Java 落库 |
+| 政策检索节点 | 正式审核工作流内并行执行 | 检索可信政策，判断政策覆盖与适用性 | 否，输出政策事实 |
+| 凭证审核节点 | 正式审核工作流内并行执行 | 审核图片凭证，识别一致性、缺失项和风险 | 否，输出视觉事实 |
+| `review_synthesis` | 并行节点汇合后执行 | 生成一份 `ReviewAssessment` 和审核提案 | 否 |
+| 复杂案例综合调用 | `review_synthesis` 内按需触发 | 仅综合单份评估并生成复核提案 | 否，不能调用工具或绕过 Gate |
+| Deterministic Gate | 并行节点汇合后执行 | 用确定性规则选择自动通过或人工审核建议 | 只选择提交动作，最终仍由 Java 落库 |
 
 ### 3.1 会话 ReAct Agent 子图
 
@@ -179,177 +190,45 @@ flowchart TD
 - 查询用户订单、订单详情、物流和已有售后工单
 - 查询会话历史和售后知识
 - 获取工单可信上下文
-- 提交受保护的 AI 审核结果
 - 请求人工接管
 - 通过 Java 追加聊天消息
 
 工具执行被拆分为“调用—观察—决策”，便于统一处理超时、参数错误、权限拒绝、空结果和可恢复故障。循环受最大步数、重复工具调用检测和终态动作校验约束。
 
-### 3.2 正式审核受控工作流总图
+### 3.2 正式审核单工作流
 
 ```mermaid
 flowchart TD
-    F0["load_trusted_context<br/>通过 Java 查询最新工单"] --> C0{"上下文可用且状态仍可审核？"}
-    C0 -->|否| FM["submit_manual_review"]
-    C0 -->|是| F1["validate_review_inputs<br/>检查问题描述与图片凭证"]
-
-    F1 --> C1{"输入是否完整？"}
-    C1 -->|否| FE["request_missing_evidence"]
-    C1 -->|是| F2["sop_plan<br/>确定性生成 Skill 任务与 policy_query"]
-
-    F2 --> P0
-    F2 --> E0
-
-    subgraph PolicyGraph["Policy Retrieval Workflow"]
-        P0["receive_task"] --> P1["retrieve_policy"]
-        P1 --> P2["observe_policy_result"]
-        P2 --> P3{"可信政策是否充分？"}
-        P3 -->|是| P7["finalize_policy_assessment"]
-        P3 -->|否且允许改写| P4["rewrite_policy_query"]
-        P4 --> P5{"产生有效候选查询？"}
-        P5 -->|是| P6["retrieve_policy_multi"]
-        P6 --> P8["observe_rewritten_policy_result"]
-        P8 --> P7
-        P5 -->|否| P7
-        P3 -->|基础设施失败或已达上限| P7
-    end
-
-    subgraph EvidenceGraph["Evidence Review Workflow"]
-        E0["receive_task"] --> E1{"附件与任务是否合法？"}
-        E1 -->|否| E3["assess_evidence<br/>输出缺失项或失败类别"]
-        E1 -->|是| E2["review_evidence<br/>视觉模型审核"]
-        E2 --> E3
-    end
-
-    P7 --> S0["review_synthesis<br/>校验 context_version 与复杂度"]
-    E3 --> S0
-    S0 --> C2{"是否满足升级条件？"}
-    C2 -->|否| SOP["确定性 SOP 提案"]
-    C2 -->|是| SUP["复杂案例综合节点"]
-    SOP --> CONF["deterministic confidence<br/>政策 + 凭证可信度评分"]
-    SUP --> CONF
-    CONF --> G0["deterministic_gate"]
-    G0 --> DECISION{"Gate Action"}
-    DECISION -->|SUBMIT_REVIEW| FS["submit_review"]
-    DECISION -->|REQUEST_EVIDENCE| FE
-    DECISION -->|MANUAL_REVIEW| FM
-
-    FS --> END1["END"]
-    FE --> END1
-    FM --> END1
+    A["load_trusted_context<br/>Java 可信工单上下文"] --> C{"上下文可用且状态可审核？"}
+    C -->|否| MANUAL["submit_manual_review"]
+    C -->|是| B{"validate_review_inputs<br/>描述和附件齐全？"}
+    B -->|否| R["request_missing_evidence<br/>Java 记录补证请求"]
+    R -->|已记录| WAIT["await_evidence<br/>等待新的凭证事件"]
+    WAIT --> RELOAD["prepare_resumed_attempt<br/>清理本次评估状态"]
+    RELOAD --> A
+    R -->|失败| MANUAL
+    R -->|证据版本已变化| STALE["结束本次事件"]
+    B -->|是| PLAN["sop_plan<br/>确定性生成政策查询"]
+    PLAN --> P["policy_review<br/>严格过滤；必要时最多改写一次"]
+    PLAN --> V["visual_review<br/>审核同一上下文的附件"]
+    P --> M["review_synthesis<br/>唯一 ReviewAssessment<br/>常规提案或按需复杂综合<br/>确定性置信度"]
+    V --> M
+    M --> G{"deterministic_gate"}
+    G -->|条件满足| APPROVE["submit_review"]
+    G -->|不可信、不确定或失败| MANUAL
+    APPROVE --> JAVA["Java 校验请求 ID 和证据版本"]
+    MANUAL --> JAVA
+    JAVA -->|已应用| END["结束"]
+    JAVA -->|旧版本或状态变化| STALE
 ```
 
-正式审核 Skill 不把完整业务上下文随意交给能力节点，而是构造最小化任务：
+补证只发生在输入校验阶段。补证事件恢复后重新读取 Java 上下文，再次校验输入；进入并行评估后，Gate 只选择自动通过或转人工。政策节点和视觉节点共享一份 `TrustedCaseContext`，各自只接收调用工具所需字段，不创建第二套业务上下文或子工作流。
 
-- Policy Retrieval Workflow 只接收政策检索需要的商品、类目、售后类型、商家、政策版本和业务时间。
-- Evidence Review Workflow 只接收图片审核需要的问题、商品、订单、工单与附件。
-- 两个 Workflow 都携带相同的 `context_version`。汇合时版本不一致会直接转人工，防止使用不同时间点的事实合成结论。
-- `task_id` 由 `review_request_id + workflow + context_version` 计算，便于追踪与幂等分析。
-- 正式审核 Skill 定义位于 `python_agent/after_sales_agent/skills/formal-review`；`AgentSkillRegistry` 启动时只索引 frontmatter，场景命中后才加载 `SKILL.md`，进入 Policy/Evidence 分支时再分别加载所需 reference。
-- Skill 包版本由 `SKILL.md` 与其 references 共同计算内容哈希；名称和版本进入 Trace 及 Java `skill_versions` 审计字段。缺失正式审核 Skill 时在工作流激活阶段失败关闭，避免静默退回未受约束的模型行为。
-- 人类可读的流程规范位于 `docs/sop/formal-review-sop.md`，硬规则由可执行 Workflow、Gate 和测试保证。
+政策节点以商家、政策版本、业务时间等可信字段严格过滤。覆盖不足且检索基础设施正常时，模型最多触发一次受限多查询改写，不能更改过滤条件。视觉节点只报告可见问题、凭证相关性、一致性与核验限制。两者汇合成唯一的 `ReviewAssessment`；复杂案例模型只提出 `ReviewProposal`，最终动作由确定性 Gate 选择。
 
-### 3.3 SOP、升级复核与 Gate 决策子图
+模型输出必须通过 JSON 解析和字段校验；有限重试仍失败时转人工。Kafka 消费端在工作流外设置执行超时，超时后提交人工兜底，并标记在途工作取消；迟到的模型结果在调用 Java 前会被拦截。Java 对审核请求和证据版本执行条件更新，防止迟到或重复结果覆盖已持久化的审核状态。
 
-```mermaid
-flowchart TD
-    S1["Deterministic SOP Plan<br/>派发 POLICY 与 EVIDENCE"] --> S2["并行等待结构化 Workflow 结果"]
-    S2 --> S3{"context_version 一致？"}
-    S3 -->|否| M1["MANUAL_REVIEW<br/>上下文版本冲突"]
-    S3 -->|是| S4{"检索不足、政策/证据冲突、视觉不确定或高风险？"}
-    S4 -->|否| R1["SOP 生成常规提案，不调用综合 LLM"]
-    S4 -->|是| R2["复杂案例综合节点生成复核提案"]
-    R1 --> S5["apply_deterministic_confidence"]
-    R2 --> S5
-    S5 --> G1{"确定性 Gate"}
-
-    G1 -->|凭证服务失败或发现风险| M2["MANUAL_REVIEW"]
-    G1 -->|缺少必要凭证| E1["REQUEST_EVIDENCE"]
-    G1 -->|政策不可信或版本不匹配| M3["MANUAL_REVIEW"]
-    G1 -->|置信度低于阈值| M4["MANUAL_REVIEW"]
-    G1 -->|自动审核关闭| M5["MANUAL_REVIEW"]
-    G1 -->|APPROVE + 可视觉核验 + 凭证一致| A1["SUBMIT_REVIEW"]
-    G1 -->|其他条件未满足| M6["MANUAL_REVIEW"]
-
-    A1 --> J["Java Internal API"]
-    E1 --> J
-    M1 --> J
-    M2 --> J
-    M3 --> J
-    M4 --> J
-    M5 --> J
-    M6 --> J
-    J --> DB[("MySQL 最终状态")]
-```
-
-这里的 LLM 只生成 `ReviewProposal`，真正的 Gate 是代码规则。即使模型提出自动通过，只要政策、凭证、版本、置信度或功能开关任一条件不满足，系统就不会自动通过。
-
-### 3.4 Policy Retrieval Workflow 与 Agentic RAG
-
-```mermaid
-flowchart TD
-    Q0["原始问题 + TrustedCaseContext"] --> Q1["构建自然语言 policy_query"]
-    Q1 --> F0["构建结构化过滤计划<br/>merchant / category / scene / intent / source / policy_version / as_of_time"]
-
-    F0 --> E0["DashScope text-embedding-v3"]
-    F0 --> K0["PostgreSQL pg_trgm / 关键词召回"]
-    E0 --> V0["pgvector Dense Recall"]
-    V0 --> R0["RRF 融合候选"]
-    K0 --> R0
-    R0 --> RR0["qwen3-rerank 精排"]
-    RR0 --> T0["阈值过滤、引用整理与可信政策判定"]
-
-    T0 --> O0["observe_policy_result"]
-    O0 --> C0{"可信、未降级且覆盖充分？"}
-    C0 -->|是| A0["生成 PolicyAssessment"]
-    C0 -->|基础设施失败| A1["标记不可信 / 失败<br/>交由 Gate 转人工"]
-    C0 -->|知识缺口且首次检索| W0["LLM 仅评估覆盖并改写查询"]
-
-    W0 --> W1["最多 3 个互补自然语言查询<br/>禁止修改结构化过滤条件"]
-    W1 --> MQ0["并行多查询检索"]
-    MQ0 --> MQ1["每个查询：Dense + Keyword + RRF"]
-    MQ1 --> MQ2["跨查询 RRF 融合"]
-    MQ2 --> MQ3["按候选查询分别 Rerank"]
-    MQ3 --> MQ4["去重并取最高 rerank_score"]
-    MQ4 --> T1["再次执行阈值、引用和可信政策判定"]
-    T1 --> A0
-
-    E0 -. Embedding 失败 .-> D0["lexical / local fallback"]
-    RR0 -. Reranker 失败 .-> D1["hybrid_rrf_degraded"]
-    D0 --> D2["返回降级模式与 failure_reason"]
-    D1 --> D2
-    D2 --> A1
-```
-
-Agentic RAG 不是让模型自由搜索，而是“模型判断知识覆盖、代码控制检索边界”：
-
-1. 首次检索使用结构化硬过滤，避免跨商家、跨政策版本或跨生效时间召回。
-2. Dense 与 Keyword 召回通过 RRF 融合，再由 Reranker 精排。
-3. 模型只能判断覆盖是否充分，并生成最多 3 个互补查询；不能更改商家、政策版本、时间等过滤条件。
-4. 多查询结果再次融合和精排，并保留文档、Chunk 与来源引用。
-5. `trusted_policy_eligible`、`filter_level`、`reranker_succeeded`、`no_answer` 和 `failure_reason` 会进入结构化评估。
-6. 降级召回可以用于提示和诊断，但正式审核不会把降级结果当成可信政策自动通过。
-
-### 3.5 Evidence Review Workflow 子图
-
-```mermaid
-flowchart TD
-    E0["EvidenceTask"] --> E1["校验 task_id、ticket_id、order_id、context_version"]
-    E1 --> C0{"是否存在有效附件？"}
-    C0 -->|否| E5["生成缺失凭证列表"]
-    C0 -->|是| E2["调用 Vision Review Tool"]
-    E2 --> E3["统一图片来源与序列化"]
-    E3 --> E4["识别可视问题、证据类别、风险信号与核验限制"]
-    E4 --> C1{"结果是否可靠？"}
-    C1 -->|视觉服务失败| E6["success=false<br/>交由 Gate 转人工"]
-    C1 -->|证据不足| E5
-    C1 -->|完成| E7["EvidenceAssessment"]
-
-    E5 --> E7
-    E7 --> OUT["输出：visual_verifiable、evidence_consistent、visual_confidence、satisfied_evidence、missing_evidence、risk_signals"]
-```
-
-Evidence Agent 不针对单个商品或某张截图写死规则，而是输出通用的证据类别、可观察问题、缺失项、风险信号和视觉能力边界。功能异常无法仅凭静态图片验证时，会要求补充更合适的凭证或转人工。
+`formal-review` 是唯一正式审核 Skill。它的 reference 仅约束同一工作流内的政策检索和凭证审核节点；Skill 名称与内容哈希版本进入 Trace 和 Java 审计字段。详细业务规则见 `docs/sop/formal-review-sop.md`。
 
 ## 四、异步审核、幂等与故障恢复
 
@@ -374,7 +253,7 @@ sequenceDiagram
 
     loop 定时发布 NEW / FAILED
         Outbox->>MySQL: 查询待发布事件
-        Outbox->>Kafka: 以 event_id 为 Key 发布
+        Outbox->>Kafka: 以 review_request_id 为 Key 发布，事件包含 event_id
         Kafka-->>Outbox: 发布确认
         Outbox->>MySQL: 标记 PUBLISHED
     end
@@ -392,17 +271,33 @@ sequenceDiagram
         Agent->>Java: 查询最新可信工单上下文
         Java->>MySQL: 读取工单、订单、附件与版本
         Java-->>Agent: TrustedCaseContext
-        par Policy Retrieval Workflow
-            Agent->>Pg: 混合检索与过滤
-            Agent->>Model: 查询覆盖评估 / Rerank
-        and Evidence Review Workflow
-            Agent->>Model: 视觉凭证审核
+        alt 缺少问题描述或附件
+            Agent->>Java: request_missing_evidence
+            Java->>MySQL: 持久化补证请求与消息
+            Java-->>Agent: 已应用或旧版本
+            Agent->>Redis: 已应用则 EVIDENCE_REQUIRED；旧版本则释放 event_id
+            Note over Agent,Java: 新凭证事件到达后沿用 review_request_id，重新读取 Java 上下文
+        else 输入完整
+            par policy_review
+                Agent->>Pg: 严格过滤检索；必要时一次受限多查询
+            and visual_review
+                Agent->>Model: 视觉凭证审核
+            end
+            Agent->>Agent: 汇合为一份 ReviewAssessment
+            opt 复杂且工具结果可用
+                Agent->>Model: 受限综合生成 ReviewProposal
+            end
+            Agent->>Agent: 确定性置信度 + Gate
+            alt 工作流在时限内完成
+                Agent->>Java: 提交 APPROVE 或 MANUAL_REVIEW_REQUIRED
+            else 模型或工作流超时
+                Agent->>Agent: 标记在途执行取消
+                Agent->>Java: 人工审核兜底
+            end
+            Java->>MySQL: 校验 review_request_id、证据版本与状态后条件更新
+            Java-->>Agent: 已应用 / 旧版本 / 状态已变化
+            Agent->>Redis: 已应用则记录终态；旧版本则释放 event_id
         end
-        Agent->>Agent: 正式审核 Skill 汇总 / 复杂案例综合 + Deterministic Gate
-        Agent->>Java: 提交审核、补证或人工审核动作
-        Java->>MySQL: 幂等校验并持久化最终状态与通知消息
-        Java-->>Agent: APPLIED / STALE / IDEMPOTENT
-        Agent->>Redis: 标记 COMPLETED / EVIDENCE_REQUIRED / MANUAL_REQUIRED
         Agent->>Kafka: 提交 Offset
         Java-->>Staff: WebSocket / 会话刷新
     end
@@ -423,17 +318,20 @@ stateDiagram-v2
     PROCESSING --> COMPLETED: 审核结果成功落库
     PROCESSING --> EVIDENCE_REQUIRED: 已持久化补证请求
     PROCESSING --> MANUAL_REQUIRED: Agent 失败但人工兜底成功
+    PROCESSING --> RELEASED: Java 拒绝旧审核或旧证据版本
     PROCESSING --> FAILED_CONSUME: Agent 与人工兜底均失败
+    RELEASED --> [*]: 本次事件结束；新事件重新认领
     FAILED_CONSUME --> DLQ: 发布死信并提交 Offset
     DLQ --> MANUAL_REQUIRED: Java DLQ Consumer 幂等重放人工接管
 ```
 
 可靠性策略：
 
-- `event_id` 同时作为 Kafka Key、Redis 消费幂等键和 Java `review_request_id`。
+- `review_request_id` 标识同一次审核生命周期，也是 Kafka Key 和 Java 条件更新参数；每次开始或补证恢复事件有独立的 `event_id`，用于 Outbox 和 Redis 消费幂等。Kafka 另行提交 Offset。
 - Redis 使用带 TTL 的 `PROCESSING` 状态和心跳续期；崩溃后允许过期接管。
 - 终态重复事件直接 ACK；仍在处理的重复事件不推进 Offset。
 - Agent 异常先尝试通过 Java 持久化人工审核；只有人工兜底也失败才进入 DLQ。
+- Java 返回旧审核或旧证据版本时，本次事件释放幂等占用并结束，由新事件重读工单，不在评估后回到补证节点。
 - Outbox 发布耗尽重试时不能假装成功，必须把工单转入可见的人工处理状态。
 - Trace ID 从 Java、Outbox、Kafka、Agent 工具调用一直贯穿到最终落库。
 
@@ -476,7 +374,7 @@ stateDiagram-v2
    身份、金额、时效、状态机、可信政策资格、证据要求和自动审核条件写在代码中，模型输出不能绕过规则。
 
 3. **最小上下文与最小工具权限**
-   正式审核 Skill 只向内部 Workflow 派发完成任务必需的数据；复杂案例综合节点仅接收结构化评估，Agent 只能调用注册工具，不能直接访问业务数据库。
+   正式审核工作流只加载一份可信工单上下文，政策与视觉节点分别取调用工具必需的字段；复杂案例综合节点仅接收结构化评估，Agent 只能调用注册工具，不能直接访问业务数据库。
 
 4. **事实来源唯一**
    MySQL 保存业务事实，pgvector 保存知识，Redis 保存短期控制状态，Kafka 传递事件，避免多份状态相互冲突。
@@ -488,7 +386,7 @@ stateDiagram-v2
    耗时 AI 审核不阻塞用户提交；Outbox、Kafka、Redis 和 Java 幂等共同处理重复投递与局部故障。
 
 7. **失败时优先保证用户可继续**
-   模型不确定、证据不足、政策不可信或外部服务异常时，系统明确补证或转人工，不进入无限推理和重试。
+   初始输入缺失时先补证并等待恢复；进入并行评估后，模型不确定、证据不足、政策不可信或外部服务异常均转人工，不再循环请求补证。
 
 8. **检索质量优先于看似有答案**
    降级检索、Reranker 失败、政策版本不匹配或无可信引用时宁可拒绝自动审核，也不把低质量召回包装成确定结论。
@@ -517,8 +415,10 @@ stateDiagram-v2
 ├─ src/                         # Java 业务服务
 ├─ python_agent/                # Python LangGraph Agent
 │  └─ after_sales_agent/
+│     ├─ agent/workflows/       # 会话工作流与单张正式审核图
+│     ├─ skills/                # 按需加载的 Skill 与节点参考约束
 │     ├─ domain/                # 零框架依赖的业务类型
-│     ├─ application/           # 对话、情绪、正式审核与用例编排
+│     ├─ application/           # 对话、情绪与 RAG 查询用例
 │     ├─ retrieval/             # pgvector、pg_trgm、RRF 与排序
 │     ├─ providers/             # LLM、Embedding、Reranker 与 Vision
 │     ├─ integrations/          # Java 内部 Agent API 网关

@@ -1,8 +1,56 @@
 from __future__ import annotations
 
+import json
+from types import SimpleNamespace
+
+import pytest
+
 from after_sales_agent.providers import vision_review_service
 from after_sales_agent.providers.vision_review_service import VisionReviewService
+from after_sales_agent.providers.llm_client import OpenAICompatibleClient
+from after_sales_agent.providers.resilient_llm_runtime import LLMResponseParseError
 from after_sales_agent.domain.models import Attachment, ImageReviewItem
+
+
+def test_vision_json_schema_repairs_once_then_accepts_valid_response(monkeypatch) -> None:
+    client = object.__new__(OpenAICompatibleClient)
+    client._client = SimpleNamespace(primary=SimpleNamespace(provider="remote"))
+    client.config = SimpleNamespace(model="test-vision")
+    outputs = [{"image_type": "商品照片"}, {
+        "image_type": "商品照片", "is_clear": True, "confidence": 0.9,
+        "damage_confidence": 0.8, "issue_visible": True,
+        "evidence_relevance": 0.9, "evidence_consistency": "consistent",
+        "tampering_suspected": False,
+    }]
+    calls = []
+
+    def chat(messages, **kwargs):
+        calls.append(kwargs["max_tokens"])
+        return {"choices": [{"message": {"content": json.dumps(outputs.pop(0))}}]}
+
+    monkeypatch.setattr(client, "chat", chat)
+    result = client.chat_multimodal_json(
+        system_prompt="review", user_text="evidence", image_urls=[],
+        schema=vision_review_service._VISION_RESPONSE_SCHEMA,
+    )
+
+    assert result["issue_visible"] is True
+    assert calls == [180, 320]
+
+
+def test_vision_json_schema_exhaustion_fails_closed(monkeypatch) -> None:
+    client = object.__new__(OpenAICompatibleClient)
+    client._client = SimpleNamespace(primary=SimpleNamespace(provider="remote"))
+    client.config = SimpleNamespace(model="test-vision")
+    monkeypatch.setattr(client, "chat", lambda *args, **kwargs: {
+        "choices": [{"message": {"content": '{"confidence":"high"}'}}]
+    })
+
+    with pytest.raises(LLMResponseParseError, match="after 2 attempts"):
+        client.chat_multimodal_json(
+            system_prompt="review", user_text="evidence", image_urls=[],
+            schema=vision_review_service._VISION_RESPONSE_SCHEMA,
+        )
 
 
 def test_parse_keeps_overall_and_damage_confidence_separate() -> None:

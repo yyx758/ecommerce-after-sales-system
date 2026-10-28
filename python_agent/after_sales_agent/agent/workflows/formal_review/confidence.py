@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from .contracts import EvidenceAssessment, PolicyAssessment, ReviewProposal
+from .contracts import ReviewAssessment, ReviewProposal
 
 
 CONFIDENCE_MODEL_VERSION = "deterministic-v1"
@@ -16,8 +16,7 @@ _EVIDENCE_INTEGRITY_WEIGHT = 0.15
 
 def apply_deterministic_confidence(
     proposal: ReviewProposal,
-    policy: PolicyAssessment,
-    evidence: EvidenceAssessment,
+    review: ReviewAssessment,
 ) -> ReviewProposal:
     """Replace uncalibrated LLM self-confidence with traceable review signals.
 
@@ -26,25 +25,25 @@ def apply_deterministic_confidence(
     separately for auditing and has no authority over the business gate.
     """
 
-    policy_relevance = _score(policy.policy_match_score)
-    visual_confidence = _score(evidence.visual_confidence)
+    policy_relevance = _score(review.policy_match_score)
+    visual_confidence = _score(review.visual_confidence)
     policy_integrity = float(
-        policy.success
-        and policy.trusted_policy_eligible
-        and policy.policy_version_matched
-        and policy.filter_level == "strict"
+        review.policy_success
+        and review.trusted_policy_eligible
+        and review.policy_version_matched
+        and review.filter_level == "strict"
         and (
-            policy.reranker_succeeded
-            or policy.retrieval_mode == "multi_query_rrf"
+            review.reranker_succeeded
+            or review.retrieval_mode == "multi_query_rrf"
         )
-        and bool(policy.citations)
+        and bool(review.citations)
     )
     evidence_integrity = float(
-        evidence.success
-        and evidence.visual_verifiable
-        and evidence.evidence_consistent is True
-        and not evidence.missing_evidence
-        and not evidence.risk_signals
+        review.visual_success
+        and review.visual_verifiable
+        and review.evidence_consistent is True
+        and not review.missing_evidence
+        and not review.risk_signals
     )
     contributions = {
         "policy_relevance": round(
@@ -71,7 +70,7 @@ def apply_deterministic_confidence(
         "calibration_status": "rule_based_uncalibrated",
         "signals": {
             "policy_relevance": policy_relevance,
-            "policy_threshold": _score(policy.policy_threshold),
+            "policy_threshold": _score(review.policy_threshold),
             "visual_confidence": visual_confidence,
             "policy_integrity": policy_integrity,
             "evidence_integrity": evidence_integrity,

@@ -61,14 +61,14 @@ class AgentSkillRegistryTest(unittest.TestCase):
 
         policy_reference = registry.load_reference(
             "formal_review",
-            "policy-workflow.md",
+            "policy-review.md",
         )
 
         self.assertIn("严格过滤", policy_reference)
         self.assertEqual(
             {
                 "skills": ("formal-review",),
-                "references": ("formal-review/policy-workflow.md",),
+                "references": ("formal-review/policy-review.md",),
             },
             registry.cache_state(),
         )

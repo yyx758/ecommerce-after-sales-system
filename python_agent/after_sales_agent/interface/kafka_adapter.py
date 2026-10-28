@@ -18,6 +18,7 @@ from after_sales_agent.config.environment import load_agent_env
 load_agent_env()
 
 from after_sales_agent.agent import AfterSalesAgent
+from after_sales_agent.agent.workflows.formal_review.graph import bind_review_cancellation
 from after_sales_agent.infrastructure.agent_metrics import AGENT_RUNTIME_METRICS
 from after_sales_agent.infrastructure.review_checkpoint import (
     ReviewCheckpointRuntime,
@@ -774,12 +775,19 @@ class AfterSalesReviewKafkaConsumer:
     ) -> dict[str, Any]:
         timeout = max(1, self.config.agent_timeout_seconds)
         executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ai-review-agent")
+        cancel_event = threading.Event()
+
+        def run_agent(fn, *args):
+            with bind_review_cancellation(cancel_event):
+                return fn(*args)
+
         if self._is_resume_event(event):
             resume = getattr(self.agent, "resume_formal_review", None)
             callable_resume = (
                 resume if callable(resume) else getattr(self.agent, "resume")
             )
             future = executor.submit(
+                run_agent,
                 callable_resume,
                 review_id,
                 {
@@ -795,10 +803,11 @@ class AfterSalesReviewKafkaConsumer:
             callable_start = (
                 start if callable(start) else getattr(self.agent, "handle")
             )
-            future = executor.submit(callable_start, payload, trace_recorder)
+            future = executor.submit(run_agent, callable_start, payload, trace_recorder)
         try:
             return future.result(timeout=timeout)
         except FutureTimeoutError as exc:
+            cancel_event.set()
             future.cancel()
             raise TimeoutError(f"AI review agent exceeded {timeout}s") from exc
         finally:
@@ -889,15 +898,15 @@ class AfterSalesReviewKafkaConsumer:
     @staticmethod
     def _review_submit_outcome(result: dict[str, Any]) -> str:
         for item in result.get("tool_trace") or []:
-            if item.get("tool") != "submit_ai_review" or not item.get("ok"):
+            if item.get("tool") not in {"submit_ai_review", "request_missing_evidence"} or not item.get("ok"):
                 continue
             data = item.get("data")
             if not isinstance(data, dict):
                 continue
-            if data.get("review_applied") is True:
+            if item.get("tool") == "submit_ai_review" and data.get("review_applied") is True:
                 return "APPLIED"
             reason = str(data.get("review_reject_reason") or "").strip().upper()
-            if reason in {"STALE_REVIEW", "STATUS_CHANGED"}:
+            if reason in {"STALE_REVIEW", "STATUS_CHANGED", "STALE_EVIDENCE"}:
                 return reason
         return "NOT_APPLIED"
 
@@ -914,7 +923,7 @@ class AfterSalesReviewKafkaConsumer:
         if outcome == "APPLIED":
             self._mark_review_terminal_status(event_id, result)
             return
-        if outcome in {"STALE_REVIEW", "STATUS_CHANGED"}:
+        if outcome in {"STALE_REVIEW", "STATUS_CHANGED", "STALE_EVIDENCE"}:
             # Java/MySQL is authoritative: a stale result or an already changed
             # status must neither overwrite the ticket nor become a Redis success.
             logger.info("AI review result not applied event_id=%s outcome=%s", event_id, outcome)

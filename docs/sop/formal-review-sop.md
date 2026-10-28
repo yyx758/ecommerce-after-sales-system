@@ -16,12 +16,12 @@ Skill 定义位于 `python_agent/after_sales_agent/skills/formal-review/`，可�
 
 1. 从 Java 加载可信工单上下文；查询失败或工单状态已变化时转人工。
 2. 校验问题描述和图片附件；缺失时请求补证并等待同一审核流程恢复。
-3. 正式审核 Skill 确定性生成 Policy/Evidence Workflow 任务，不调用 LLM 规划路由。
-4. Policy Retrieval Workflow 检索并评估可信政策；Evidence Review Workflow 审核可见凭证。
-5. 校验两个 Workflow 的 `context_version`，不一致时直接转人工。
+3. 正式审核 Skill 确定性生成政策检索问题，不调用 LLM 规划路由。
+4. 单个 LangGraph 从同一可信上下文并行执行政策检索节点和凭证审核节点，汇合后生成一份 `ReviewAssessment`。
+5. 上下文版本不一致时直接转人工。
 6. 评估复杂度：常规案例生成确定性提案；复杂案例进入受限综合节点。
-7. 对提案应用确定性置信度模型和 Gate。
-8. 通过 Java 内部接口提交自动通过、补证或人工审核建议，由 Java 再次校验并持久化。
+7. 对提案应用确定性置信度模型和 Gate；评估完成后只提交审核或转人工，不再请求补证。
+8. 通过 Java 内部接口提交建议，由 Java 再次校验并持久化。
 
 ## 升级条件
 
@@ -30,7 +30,7 @@ Skill 定义位于 `python_agent/after_sales_agent/skills/formal-review/`，可�
 - 政策检索失败、降级、缺少引用、版本不匹配或无法形成可信政策。
 - 视觉凭证不可核验、置信度不足、互相矛盾或存在风险信号。
 - 可信政策要求的核心凭证仍无法确认。
-- Policy/Evidence 结构化结论存在需要语义综合的不确定性。
+- 政策与视觉事实存在需要语义综合的不确定性。
 
 工具失败和上下文版本冲突必须失败关闭；无论综合节点输出什么，最终动作仍由 Gate 决定。
 
@@ -47,12 +47,12 @@ Skill 定义位于 `python_agent/after_sales_agent/skills/formal-review/`，可�
 ## Skill 契约
 
 - `formal-review` 是唯一正式审核 Skill。
-- 内部 Policy Retrieval Workflow 只输出 `PolicyAssessment`；Evidence Review Workflow 只输出 `EvidenceAssessment`。
+- 政策检索和凭证审核是同一工作流中的并行节点，汇合后只生成一份 `ReviewAssessment`。
 - Skill 名称和内容哈希版本必须进入 Trace 与 Java 审计字段 `skill_versions`。
 - Skill 不得执行写操作，不得输出最终业务状态，不得包含某个截图或单品专用规则。
 
 ## 恢复与审计
 
 - 补证恢复必须沿用同一 `review_request_id`，并重新加载 Java 上下文。
-- 提交时携带预期证据版本；Java 返回 `STALE_EVIDENCE` 时等待更新后重试。
+- 提交时携带预期证据版本；Java 返回 `STALE_EVIDENCE` 时结束本次评估并释放事件幂等占用，由新的凭证事件重新触发审核。
 - Trace 必须记录 Skill 名称、版本、审核模式、升级原因、Gate 原因和最终 Java 返回。

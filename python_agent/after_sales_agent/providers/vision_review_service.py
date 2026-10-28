@@ -21,6 +21,25 @@ from ..infrastructure.request_tracing import TraceRecorder
 
 logger = logging.getLogger("after_sales_agent.vision")
 
+_VISION_RESPONSE_SCHEMA = {
+    "type": "object",
+    "required": [
+        "image_type", "is_clear", "confidence", "damage_confidence",
+        "issue_visible", "evidence_relevance", "evidence_consistency",
+        "tampering_suspected",
+    ],
+    "properties": {
+        "image_type": {"enum": ["商品照片", "外包装照片", "物流面单照片", "不确定"]},
+        "is_clear": {"type": "boolean"},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "damage_confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "issue_visible": {"type": "boolean"},
+        "evidence_relevance": {"type": "number", "minimum": 0, "maximum": 1},
+        "evidence_consistency": {"enum": ["consistent", "contradictory", "uncertain"]},
+        "tampering_suspected": {"type": "boolean"},
+    },
+}
+
 
 class VisionReviewService:
     PROMPT_VERSION: ClassVar[str] = "2026-07-31-generic-evidence-v2"
@@ -175,6 +194,7 @@ class VisionReviewService:
             # Two independent confidence fields plus waybill metadata can exceed
             # 100 tokens; truncation produces invalid JSON on harder images.
             max_tokens=160,
+            schema=_VISION_RESPONSE_SCHEMA,
         )
         logger.info(
             "vision raw result index=%s name=%s raw=%s",

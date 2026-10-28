@@ -121,112 +121,28 @@ class TrustedCaseContext:
             attachments=tuple(raw_attachments),
         )
 
-    def policy_view(self, issue: str) -> dict[str, Any]:
-        return {
-            "issue": issue,
-            "merchant_code": self.merchant_code,
-            "policy_version": self.policy_version,
-            "product_name": self.product_name,
-            "product_category": self.product_category,
-            "after_sales_type": self.after_sales_type,
-            "business_time": self.business_time,
-            "context_version": self.context_version,
-        }
-
-    def evidence_view(self, issue: str) -> dict[str, Any]:
-        return {
-            "issue": issue,
-            "product_name": self.product_name,
-            "product_category": self.product_category,
-            "after_sales_type": self.after_sales_type,
-            "ticket_id": self.ticket_id,
-            "order_id": self.order_id,
-            "context_version": self.context_version,
-        }
-
-
 @dataclass(frozen=True)
-class PolicyTask:
-    task_id: str
-    trace_id: str | None
-    review_request_id: str
-    ticket_id: str
+class ReviewAssessment:
     context_version: str
-    user_id: str
-    issue: str
-    query: str
-    merchant_code: str | None
-    product_name: str | None
-    product_category: str | None
-    after_sales_type: str | None
-    policy_version: str | None
-    business_time: str | None
-    skill_name: str = ""
-    skill_version: str = ""
-    skill_instructions: str = ""
-
-
-@dataclass(frozen=True)
-class EvidenceTask:
-    task_id: str
-    trace_id: str | None
-    review_request_id: str
-    ticket_id: str
-    context_version: str
-    user_id: str
-    order_id: str
-    issue: str
-    product_name: str | None
-    product_category: str | None
-    after_sales_type: str | None
-    attachments: tuple[dict[str, Any], ...] = ()
-    skill_name: str = ""
-    skill_version: str = ""
-    skill_instructions: str = ""
-
-
-@dataclass(frozen=True)
-class ReviewWorkflowPlan:
-    action: str
-    specialists: tuple[str, ...]
-    policy_query: str
-    reason_codes: tuple[str, ...] = ()
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-
-@dataclass(frozen=True)
-class PolicyAssessment:
-    context_version: str
-    success: bool
+    policy_success: bool
     trusted_policy_eligible: bool
     policy_version_matched: bool
     filter_level: str | None
     reranker_succeeded: bool
     retrieval_mode: str | None
     policy_match_score: float
-    policy_threshold: float = 0.55
-    required_evidence: tuple[str, ...] = ()
-    citations: tuple[dict[str, Any], ...] = ()
-    uncertainty_reasons: tuple[str, ...] = ()
-    raw_summary: dict[str, Any] = field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-
-@dataclass(frozen=True)
-class EvidenceAssessment:
-    context_version: str
-    success: bool
+    visual_success: bool
     visual_verifiable: bool
     evidence_consistent: bool | None
     visual_confidence: float
+    policy_threshold: float = 0.55
+    required_evidence: tuple[str, ...] = ()
+    citations: tuple[dict[str, Any], ...] = ()
     satisfied_evidence: tuple[str, ...] = ()
     missing_evidence: tuple[str, ...] = ()
     risk_signals: tuple[str, ...] = ()
-    uncertainty_reasons: tuple[str, ...] = ()
+    policy_issues: tuple[str, ...] = ()
+    visual_issues: tuple[str, ...] = ()
     image_review: dict[str, Any] | None = None
     evidence_categories: tuple[str, ...] = ()
     observed_issue_types: tuple[str, ...] = ()

@@ -5,8 +5,7 @@ import json
 from typing import Any, Protocol
 
 from .contracts import (
-    EvidenceAssessment,
-    PolicyAssessment,
+    ReviewAssessment,
     ReviewProposal,
     TrustedCaseContext,
 )
@@ -52,13 +51,12 @@ class ComplexReviewSynthesizer:
         self,
         context: TrustedCaseContext,
         issue: str,
-        policy: PolicyAssessment,
-        evidence: EvidenceAssessment,
+        review: ReviewAssessment,
     ) -> ReviewProposal:
         raw = self.llm.generate_structured(
             system_prompt=(
                 "你是正式售后审核 Skill 内的复杂案例综合节点。"
-                "只综合政策与凭证工作流的结构化结果，提出 APPROVE 或 "
+                "只综合单份审核评估，提出 APPROVE 或 "
                 "MANUAL_REVIEW_REQUIRED 建议。不得执行工具、修改业务状态或绕过"
                 "确定性 Gate。只输出 JSON：proposed_verdict、reason、confidence、"
                 "risk_reasons、assistant_reply。不得添加输入中不存在的事实。"
@@ -71,8 +69,7 @@ class ComplexReviewSynthesizer:
                         "policy_version": context.policy_version,
                         "context_version": context.context_version,
                     },
-                    "policy_assessment": policy.to_dict(),
-                    "evidence_assessment": evidence.to_dict(),
+                    "review_assessment": review.to_dict(),
                 },
                 ensure_ascii=False,
                 default=str,
