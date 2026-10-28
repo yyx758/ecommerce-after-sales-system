@@ -21,7 +21,6 @@ from .sop import (
     FormalReviewSop,
 )
 from ....tools import AgentToolRegistry, ToolResult
-from ...skill_registry import AgentSkill, AgentSkillRegistry
 from ....application.rag_query_rewrite import RagQueryRewriteService, RagRewriteError
 from ....infrastructure.agent_metrics import AGENT_RUNTIME_METRICS
 from ....application.rag_retrieval_policy import RagRetrievalPolicy
@@ -63,7 +62,6 @@ class FormalReviewState(TypedDict, total=False):
     resume_signal: dict[str, Any]
     review_mode: str
     escalation_reasons: list[str]
-    skill_versions: dict[str, str]
 
 
 _ACTIVE_REVIEW_TRACE: ContextVar[TraceRecorder | None] = ContextVar(
@@ -104,7 +102,6 @@ def _env_score(name: str, default: float) -> float:
 class FormalReviewWorkflow:
     tools: ReviewTools = field(default_factory=AgentToolRegistry)
     llm: ReviewLlm = field(default_factory=get_llm_client)
-    skills: AgentSkillRegistry = field(default_factory=AgentSkillRegistry)
     checkpointer: BaseCheckpointSaver[Any] | None = None
     auto_approve_enabled: bool = field(
         default_factory=lambda: _env_bool(
@@ -120,9 +117,6 @@ class FormalReviewWorkflow:
     )
 
     def __post_init__(self) -> None:
-        self._formal_review_skill_definition = self._require_skill(
-            "formal_review"
-        )
         self._rewrite_service = RagQueryRewriteService(self.llm)
         self._retrieval_policy = RagRetrievalPolicy()
         graph = StateGraph(FormalReviewState)
@@ -212,7 +206,6 @@ class FormalReviewWorkflow:
             "failure_reason": None,
             "review_mode": SOP_REVIEW_MODE,
             "escalation_reasons": [],
-            "skill_versions": self._formal_skill_versions(),
         }
         final = self._invoke(
             state,
@@ -259,7 +252,7 @@ class FormalReviewWorkflow:
             with bind_trace_id(trace.trace_id if trace else None):
                 with self._trace_step(
                     trace,
-                    "formal_review_skill",
+                    "formal_review_graph",
                     review_request_id=review_id,
                     operation=operation,
                 ) as trace_step:
@@ -302,11 +295,9 @@ class FormalReviewWorkflow:
                 "ticket_no": ticket.get("ticket_no") if isinstance(ticket, dict) else None,
             },
             "raw": {
-                "runtime": "formal_review_skill",
+                "runtime": "formal_review_graph",
                 "review_mode": final.get("review_mode") or SOP_REVIEW_MODE,
                 "escalation_reasons": final.get("escalation_reasons") or [],
-                "skill_versions": final.get("skill_versions")
-                or self._formal_skill_versions(),
                 "context_version": context.context_version if context else None,
                 "evidence_revision": context.evidence_revision if context else None,
                 "paused": paused,
@@ -436,14 +427,9 @@ class FormalReviewWorkflow:
                 and not self._retrieval_policy.is_infrastructure_failure(result.data)
             ):
                 try:
-                    skill = self._formal_review_skill_definition
                     decision = self._rewrite_service.evaluate(
                         user_question=state.get('issue') or '',
-                        task=(
-                            '只改写可信售后政策检索问题，不作业务决定。\n'
-                            f'Active skill ({skill.name}@{skill.version}):\n'
-                            f'{self._formal_skill_instructions("policy-review.md")}'
-                        ),
+                        task='只改写可信售后政策检索问题，不作业务决定。',
                         known_facts={
                             'product_name': context.product_name,
                             'product_category': context.product_category,
@@ -484,7 +470,6 @@ class FormalReviewWorkflow:
 
     def visual_review(self, state: FormalReviewState) -> FormalReviewState:
         context = state['trusted_context']
-        skill = self._formal_review_skill_definition
         with self._node_trace(state, 'review_visual') as trace_step:
             result = self.tools.call('review_images', {
                 'user_id': context.user_id,
@@ -494,9 +479,6 @@ class FormalReviewWorkflow:
                     item for item in (context.product_name, context.product_category) if item
                 ),
                 'issue_hint': state.get('issue') or '',
-                'skill_name': skill.name,
-                'skill_version': skill.version,
-                'skill_instructions': self._formal_skill_instructions('visual-review.md'),
             })
             facts = visual_facts(result)
             trace_step.details.update({
@@ -597,9 +579,6 @@ class FormalReviewWorkflow:
         self,
         state: FormalReviewState,
     ) -> FormalReviewState:
-        evidence_request_skill = self._require_skill("evidence_collection")
-        skill_versions = dict(state.get("skill_versions") or {})
-        skill_versions[evidence_request_skill.name] = evidence_request_skill.version
         payload = state["payload"]
         context = state.get("trusted_context")
         missing = list(state.get("evidence_needed") or [])
@@ -650,7 +629,6 @@ class FormalReviewWorkflow:
             "evidence_request_applied": applied,
             "evidence_request_outcome": reject_reason,
             "evidence_needed": missing,
-            "skill_versions": skill_versions,
             "final_reply": (
                 reply
                 if applied
@@ -708,7 +686,6 @@ class FormalReviewWorkflow:
             "tool_trace": [],
             "review_mode": SOP_REVIEW_MODE,
             "escalation_reasons": [],
-            "skill_versions": self._formal_skill_versions(),
         }
 
     def _submit_verdict(
@@ -729,9 +706,7 @@ class FormalReviewWorkflow:
             "expected_evidence_revision": (
                 context.evidence_revision if context else 0
             ),
-            "agent_architecture": "single_agent_skills_tools_retrieval",
-            "skill_versions": state.get("skill_versions")
-            or self._formal_skill_versions(),
+            "agent_architecture": "consultation_agent_and_formal_review_graph",
             "context_version": context.context_version if context else None,
             "verdict": verdict,
             "ai_review_confidence": proposal.confidence if proposal else 0.0,
@@ -947,26 +922,3 @@ class FormalReviewWorkflow:
             return None
         to_dict = getattr(value, "to_dict", None)
         return to_dict() if callable(to_dict) else None
-
-    def _require_skill(self, stage: str) -> AgentSkill:
-        skill = self.skills.select(stage)
-        if skill is None:
-            raise RuntimeError(f"required formal review skill is missing: {stage}")
-        return skill
-
-    def _formal_skill_versions(self) -> dict[str, str]:
-        return {
-            self._formal_review_skill_definition.name: (
-                self._formal_review_skill_definition.version
-            ),
-        }
-
-    def _formal_skill_instructions(self, reference: str) -> str:
-        reference_instructions = self.skills.load_reference(
-            self._formal_review_skill_definition.name,
-            reference,
-        )
-        return (
-            f"按需加载的工作流参考（{reference}）：\n"
-            f"{reference_instructions}"
-        )

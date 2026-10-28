@@ -126,7 +126,6 @@ public final class InternalAgentToolDtos {
         private BigDecimal policyMatchScore;
         private List<String> riskReviewReasons;
         private List<Map<String, Object>> policyCitations;
-        private Map<String, String> skillVersions;
         private Map<String, Object> imageReview;
         private Map<String, Object> specialistAssessments;
     }

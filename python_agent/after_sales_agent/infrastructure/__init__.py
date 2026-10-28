@@ -1,12 +1,13 @@
 """Infrastructure package — shared cross-cutting concerns.
 
 Public API:
-  - resilience: CircuitBreaker, RetryPolicy, Semaphore, TimingSemaphore
+  - resilience: CircuitBreaker
   - embedding_service: EmbeddingService for embedding HTTP calls
   - knowledge_repository: KnowledgeRepository protocol and psycopg-backed
     PsycopgKnowledgeRepository
   - observability: request_tracing, agent_metrics, tracing (trace id,
-    step timing, Prometheus metrics, trace history)
+    step timing, Prometheus metrics, trace history), trace_store (durable
+    trace persistence)
   - review_checkpoint: LangGraph checkpointer lifecycle for formal review
 """
 from __future__ import annotations
@@ -17,13 +18,7 @@ from .knowledge_repository import (
     KnowledgeRepository,
     PsycopgKnowledgeRepository,
 )
-from .resilience import (
-    CircuitBreaker,
-    CircuitOpenError,
-    RetryPolicy,
-    Semaphore,
-    TimingSemaphore,
-)
+from .resilience import CircuitBreaker, CircuitOpenError
 from .request_tracing import (
     TraceRecorder,
     TraceStep,
@@ -37,6 +32,7 @@ from .request_tracing import (
 )
 from .agent_metrics import AGENT_RUNTIME_METRICS, AgentRuntimeMetrics
 from .tracing import TRACE_HISTORY, record_trace_event
+from .trace_store import TRACE_STORE, TraceStore, build_trace_store_from_env
 
 __all__ = [
     "ActiveDocumentRow",
@@ -46,9 +42,6 @@ __all__ = [
     "embedding_error_info",
     "KnowledgeRepository",
     "PsycopgKnowledgeRepository",
-    "RetryPolicy",
-    "Semaphore",
-    "TimingSemaphore",
     "TraceRecorder",
     "TraceStep",
     "bind_trace_id",
@@ -61,5 +54,8 @@ __all__ = [
     "AGENT_RUNTIME_METRICS",
     "AgentRuntimeMetrics",
     "TRACE_HISTORY",
+    "TRACE_STORE",
+    "TraceStore",
+    "build_trace_store_from_env",
     "record_trace_event",
 ]

@@ -90,32 +90,31 @@ def _normalize_tool_history(
     if not isinstance(messages, list):
         raise LLMInvalidRequestError("LLM messages must be a list")
     normalized = deepcopy(messages)
-    pending: tuple[str, str] | None = None
+    pending: list[tuple[str, str]] = []
     seen_call_ids: set[str] = set()
     for index, message in enumerate(normalized):
         if not isinstance(message, dict):
             raise LLMInvalidRequestError(f"LLM message {index} must be an object")
         is_tool_observation = message.get("role") == "tool"
         has_tool_calls = message.get("tool_calls") is not None
-        if pending is not None:
+        if pending:
             if not is_tool_observation:
                 raise LLMInvalidRequestError(
                     f"LLM assistant tool call before message {index} requires an adjacent tool observation"
                 )
             _normalize_tool_observation(message, pending=pending, index=index)
-            pending = None
             continue
         if is_tool_observation:
             raise LLMInvalidRequestError(f"LLM tool message {index} is orphaned or duplicated")
         if has_tool_calls:
-            call_id, name = _normalize_assistant_tool_call(message, index=index)
-            if call_id in seen_call_ids:
-                raise LLMInvalidRequestError(
-                    f"LLM message {index} reuses tool call id {call_id}"
-                )
-            seen_call_ids.add(call_id)
-            pending = (call_id, name)
-    if pending is not None:
+            for call_id, name in _normalize_assistant_tool_call(message, index=index):
+                if call_id in seen_call_ids:
+                    raise LLMInvalidRequestError(
+                        f"LLM message {index} reuses tool call id {call_id}"
+                    )
+                seen_call_ids.add(call_id)
+                pending.append((call_id, name))
+    if pending:
         raise LLMInvalidRequestError("LLM assistant tool call is missing its adjacent tool observation")
     return normalized
 
@@ -124,77 +123,92 @@ def _normalize_assistant_tool_call(
     message: dict[str, Any],
     *,
     index: int,
-) -> tuple[str, str]:
+) -> list[tuple[str, str]]:
     if message.get("role") != "assistant":
         raise LLMInvalidRequestError(f"LLM message {index} tool calls require assistant role")
     content = message.get("content")
     if content is not None and not isinstance(content, str):
         raise LLMInvalidRequestError(f"LLM message {index} content must be text or null")
     calls = message.get("tool_calls")
-    if not isinstance(calls, list) or len(calls) != 1:
+    if not isinstance(calls, list) or not calls:
         raise LLMInvalidRequestError(
-            f"LLM message {index} tool_calls must contain exactly one call"
+            f"LLM message {index} tool_calls must contain at least one call"
         )
-    call = calls[0]
-    if not isinstance(call, dict):
-        raise LLMInvalidRequestError(f"LLM message {index} tool call 0 must be an object")
-    call_id = call.get("id")
-    if not isinstance(call_id, str) or not call_id.strip():
-        raise LLMInvalidRequestError(f"LLM message {index} tool call 0 requires id")
-    call_id = call_id.strip()
-    if call.get("type") != "function":
-        raise LLMInvalidRequestError(
-            f"LLM message {index} tool call 0 must use function type"
-        )
-    function = call.get("function")
-    if not isinstance(function, dict):
-        raise LLMInvalidRequestError(f"LLM message {index} tool call 0 requires function")
-    name = function.get("name")
-    if not isinstance(name, str) or not name.strip():
-        raise LLMInvalidRequestError(
-            f"LLM message {index} tool call 0 requires function name"
-        )
-    name = name.strip()
-    arguments = function.get("arguments")
-    if isinstance(arguments, str):
-        try:
-            arguments = json.loads(arguments, parse_constant=_reject_json_constant)
-        except (json.JSONDecodeError, ValueError) as exc:
+    normalized: list[tuple[str, str]] = []
+    for call_index, call in enumerate(calls):
+        if not isinstance(call, dict):
             raise LLMInvalidRequestError(
-                f"LLM message {index} tool call 0 arguments must be valid JSON"
+                f"LLM message {index} tool call {call_index} must be an object"
+            )
+        call_id = call.get("id")
+        if not isinstance(call_id, str) or not call_id.strip():
+            raise LLMInvalidRequestError(
+                f"LLM message {index} tool call {call_index} requires id"
+            )
+        call_id = call_id.strip()
+        if call.get("type") != "function":
+            raise LLMInvalidRequestError(
+                f"LLM message {index} tool call {call_index} must use function type"
+            )
+        function = call.get("function")
+        if not isinstance(function, dict):
+            raise LLMInvalidRequestError(
+                f"LLM message {index} tool call {call_index} requires function"
+            )
+        name = function.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise LLMInvalidRequestError(
+                f"LLM message {index} tool call {call_index} requires function name"
+            )
+        name = name.strip()
+        arguments = function.get("arguments")
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments, parse_constant=_reject_json_constant)
+            except (json.JSONDecodeError, ValueError) as exc:
+                raise LLMInvalidRequestError(
+                    f"LLM message {index} tool call {call_index} arguments must be valid JSON"
+                ) from exc
+        if not isinstance(arguments, dict):
+            raise LLMInvalidRequestError(
+                f"LLM message {index} tool call {call_index} arguments must be an object"
+            )
+        try:
+            json.dumps(arguments, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise LLMInvalidRequestError(
+                f"LLM message {index} tool call {call_index} arguments are not JSON-compatible"
             ) from exc
-    if not isinstance(arguments, dict):
-        raise LLMInvalidRequestError(
-            f"LLM message {index} tool call 0 arguments must be an object"
-        )
-    try:
-        json.dumps(arguments, allow_nan=False)
-    except (TypeError, ValueError) as exc:
-        raise LLMInvalidRequestError(
-            f"LLM message {index} tool call 0 arguments are not JSON-compatible"
-        ) from exc
-    call["id"] = call_id
-    function["name"] = name
-    function["arguments"] = arguments
-    return call_id, name
+        call["id"] = call_id
+        function["name"] = name
+        function["arguments"] = arguments
+        normalized.append((call_id, name))
+    return normalized
 
 
 def _normalize_tool_observation(
     message: dict[str, Any],
     *,
-    pending: tuple[str, str],
+    pending: list[tuple[str, str]],
     index: int,
 ) -> None:
     if message.get("tool_calls") is not None:
         raise LLMInvalidRequestError(f"LLM tool message {index} cannot contain tool_calls")
-    pending_id, pending_name = pending
     call_id = message.get("tool_call_id")
     if not isinstance(call_id, str) or not call_id.strip():
         raise LLMInvalidRequestError(f"LLM tool message {index} requires tool_call_id")
-    if call_id.strip() != pending_id:
+    call_id = call_id.strip()
+    match: tuple[str, str] | None = None
+    for candidate in pending:
+        if candidate[0] == call_id:
+            match = candidate
+            break
+    if match is None:
         raise LLMInvalidRequestError(
-            f"LLM tool message {index} tool_call_id does not match the pending call"
+            f"LLM tool message {index} tool_call_id does not match a pending call"
         )
+    pending_id, pending_name = match
+    pending.remove(match)
     if "name" not in message:
         message["name"] = pending_name
     else:

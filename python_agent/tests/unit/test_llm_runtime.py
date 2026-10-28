@@ -141,6 +141,71 @@ def canonical_tool_history():
     ]
 
 
+def parallel_tool_history():
+    """One assistant turn that requests two independent tools."""
+    return [
+        {"role": "system", "content": "system"},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "call-1",
+                    "type": "function",
+                    "function": {"name": "lookup", "arguments": {"keyword": "A100"}},
+                },
+                {
+                    "id": "call-2",
+                    "type": "function",
+                    "function": {"name": "lookup", "arguments": {"keyword": "A200"}},
+                },
+            ],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "call-1",
+            "name": "lookup",
+            "content": '{"ok":true}',
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "call-2",
+            "name": "lookup",
+            "content": '{"ok":true}',
+        },
+    ]
+
+
+@pytest.mark.parametrize("client_type", [OpenAICompatibleHTTPClient, OllamaHTTPClient])
+def test_parallel_tool_calls_are_accepted_and_rendered(client_type):
+    """A planning round may request several independent read-only tools."""
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        if client_type is OpenAICompatibleHTTPClient:
+            return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+        return httpx.Response(200, json={"message": {"role": "assistant", "content": "ok"}})
+
+    client = client_type(
+        config(provider="ollama" if client_type is OllamaHTTPClient else "openai"),
+        httpx.Client(transport=httpx.MockTransport(handler), base_url="https://llm.test"),
+    )
+
+    client.chat(parallel_tool_history())
+
+    assert len(requests) == 1
+    body = json.loads(requests[0].content)
+    assert len(body["messages"][1]["tool_calls"]) == 2
+    if client_type is OpenAICompatibleHTTPClient:
+        assert body["messages"][2]["tool_call_id"] == "call-1"
+        assert body["messages"][3]["tool_call_id"] == "call-2"
+    else:
+        # Ollama 不带 tool_call_id，工具结果只按顺序对应。
+        assert body["messages"][2] == {"role": "tool", "content": '{"ok":true}'}
+        assert body["messages"][3] == {"role": "tool", "content": '{"ok":true}'}
+
+
 def test_openai_history_is_rerendered_for_ollama_fallback_without_mutating_input():
     primary_requests = []
     fallback_requests = []

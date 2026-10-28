@@ -1,6 +1,17 @@
 # 面试资料索引
 
-## Layered RAG local rollout
+## 当前实现版（优先阅读）
+
+1. [当前实现面试复习手册](interview-review-current.md)：两分钟介绍、核心链路、可靠性、RAG、指标口径、高频追问和源码地图。
+2. [项目根 README](../README.md)：当前完整架构图、Workflow 图与启动方式。
+3. [后端性能实测](backend-performance-optimization-report-20260821.md)：本机压测与异步审核验证。
+4. [RAG 最新单次全链路报告](../python_agent/evaluation/full_chain_report_rrf.md)：60 条数据集的可复算结果。
+5. [Skill 渐进式加载报告](skill-progressive-loading-report-20260821.md)：加载策略与静态 Token 对比。
+6. [上下文工程交付状态](context-engineering-implementation.md)：代码、灰度开关、迁移和已执行验证。
+
+> 原 `docs/interview/` 手册已在最新架构整合时删除，下面的复习入口已改为当前代码基线，避免继续引用旧版多 Agent、旧目录或过期指标。
+
+## 附录：Layered RAG 本地发布与回滚
 
 Layered retrieval is disabled by default with `RAG_LAYERED_RETRIEVAL_ENABLED=false`. Set it to `true` only after the target environment has completed the PostgreSQL migration and backfill and the offline Holdout filter-violation gate is zero. This switch does not change Java ownership of knowledge lifecycle or publishing state.
 
@@ -58,22 +69,22 @@ Set `RAG_LAYERED_RETRIEVAL_ENABLED=false` in the runtime environment and restart
 
 Offline metrics must be reported with sample size, data distribution, annotation method, and runtime configuration. Small offline samples are not production recall claims, and this guide makes no 100% recall claim.
 
-这里只保留后端 + AI Agent 面试需要的当前架构、源码手册、简历和可核验的离线评测资料。内容以当前仓库代码为准，不把历史设计或小样本离线指标描述成线上生产效果。
+这里只保留后端 + AI Agent 面试需要的当前架构、源码入口和可核验的离线评测资料。内容以当前仓库代码为准，不把历史设计或小样本离线指标描述成线上生产效果。
 
-## 必读
+## 专题深挖
 
-1. [面试前必看手册](interview/interview-preparation-handbook.md)
-2. [RAG 全链路深挖](interview/深挖RAG.md)
-3. [项目全景架构图](interview/project-overview.md)
-4. [源码深挖面试手册](interview/source-code-deep-dive.md)
-5. [优化简历](简历材料/resume_optimized.md)
-6. [Python Agent 当前架构](../python_agent/代码结构.md)
+1. [售后 Agent 总体架构](after-sales-agent-architecture.md)
+2. [RAG Runtime Architecture](rag-runtime-architecture.md)
+3. [Agent 可观测性与评测](agent-observability-and-evaluation.md)
+4. [Agent 安全决策基线](agent-safety-baseline.md)
+5. [正式审核 SOP](sop/formal-review-sop.md)
+6. [Python Agent 代码结构](../python_agent/代码结构.md)
 
 ## 指标口径与证据
 
 - [Agent 可观测性与评测说明](agent-observability-and-evaluation.md)
 - [Agent 安全决策基线](agent-safety-baseline.md)
-- [RAG Recall@5 基线](rag-recall-baseline.md)
+- [RAG 最新单次全链路结果](../python_agent/evaluation/full_chain_report_rrf.md)
 - [情绪识别独立挑战集](emotion-priority-holdout.md)
 - [视觉模型离线评测](视觉模型离线评测报告.md)
 
@@ -81,6 +92,6 @@ Offline metrics must be reported with sample size, data distribution, annotation
 
 ## 两天复习建议
 
-- 第一天：必看手册 → 全景架构 → 源码深挖。
-- 第二天：对照简历复述项目，重点练习 Outbox、Kafka ACK/offset、Redis 幂等、SQL CAS、RAG/视觉阈值和故障降级。
-- 面试前：只复习必看手册中的“两分钟介绍”“高频问题”“容易说错的话”和“30 分钟复习顺序”。
+- 第一天：当前实现面试复习手册 → 根 README 架构图 → 对照源码地图追主链路。
+- 第二天：专题深挖，重点练习 Outbox、Kafka ACK/offset、Redis 幂等、SQL 条件更新、RAG/视觉 Gate 和故障降级。
+- 面试前：只复习当前手册中的“两分钟项目介绍”“高频追问”“容易说错的话”和“30 分钟复习顺序”。

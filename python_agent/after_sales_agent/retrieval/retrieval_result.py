@@ -11,6 +11,12 @@ from typing import Any
 from after_sales_agent.retrieval.knowledge_filters import FilterPlan
 
 RERANK_THRESHOLDS = {
+    # Retrieval support and automatic approval are separate gates. These
+    # thresholds admit calibrated qwen3-rerank policy matches for answering;
+    # the workflow still requires >= 0.65 plus strict business filters,
+    # version/validity matching and traceable citations before a policy can
+    # contribute to automatic approval.
+    #
     # Lowered from 0.55 to 0.35 to avoid filtering out relevant chunks
     # that Reranker ranks lower but are still correct.
     # Reranker's job is ranking (put correct ones first) + rejection (FPR=0),

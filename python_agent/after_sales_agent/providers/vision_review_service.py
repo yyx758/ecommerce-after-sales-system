@@ -69,9 +69,6 @@ class VisionReviewService:
         *,
         order_hint: str | None = None,
         issue_hint: str | None = None,
-        skill_name: str | None = None,
-        skill_version: str | None = None,
-        skill_instructions: str | None = None,
     ) -> ImageReviewResult:
         image_attachments = [attachment for attachment in attachments if attachment.source]
         if not image_attachments:
@@ -99,9 +96,6 @@ class VisionReviewService:
                     index=index,
                     order_hint=order_hint,
                     issue_hint=issue_hint,
-                    skill_name=skill_name,
-                    skill_version=skill_version,
-                    skill_instructions=skill_instructions,
                 )
                 for index, attachment in enumerate(image_attachments, start=1)
             )
@@ -165,15 +159,11 @@ class VisionReviewService:
         index: int,
         order_hint: str | None,
         issue_hint: str | None,
-        skill_name: str | None,
-        skill_version: str | None,
-        skill_instructions: str | None,
     ) -> ImageReviewItem:
         cache_key = self._cache_key(
             attachment.source or "",
             order_hint,
             issue_hint,
-            skill_version,
         )
         cached = self._cache_get(cache_key)
         if cached is None:
@@ -184,9 +174,6 @@ class VisionReviewService:
         materialized_source = self._materialize_source(attachment.source or "")
         raw = self.client.chat_multimodal_json(
             system_prompt=self._single_pass_system_prompt(
-                skill_name=skill_name,
-                skill_version=skill_version,
-                skill_instructions=skill_instructions,
             ),
             user_text=self._single_pass_user_text(order_hint, issue_hint),
             image_urls=[materialized_source],
@@ -250,12 +237,11 @@ class VisionReviewService:
         source: str,
         order_hint: str | None,
         issue_hint: str | None = None,
-        skill_version: str | None = None,
     ) -> str:
         order_numbers = "|".join(re.findall(r"(?:ORD)?\d{8,}", order_hint or ""))
         issue = re.sub(r"\s+", " ", str(issue_hint or "")).strip()[:500]
         digest = hashlib.sha256(
-            f"{source}\n{issue}\n{skill_version or ''}".encode("utf-8")
+            f"{source}\n{issue}".encode("utf-8")
         ).hexdigest()
         return f"{self.PROMPT_VERSION}:{self.client.config.model}:{digest}:{order_numbers}"
 
@@ -337,12 +323,7 @@ class VisionReviewService:
                 cls._cache.popitem(last=False)
 
     @staticmethod
-    def _single_pass_system_prompt(
-        *,
-        skill_name: str | None = None,
-        skill_version: str | None = None,
-        skill_instructions: str | None = None,
-    ) -> str:
+    def _single_pass_system_prompt() -> str:
         schema = {
             "image_type": "商品照片|外包装照片|物流面单照片|不确定",
             "is_clear": True,
@@ -381,21 +362,7 @@ class VisionReviewService:
             "不得作出审核通过、退款、驳回、责任归属等业务决定。"
             f"{json.dumps(schema, ensure_ascii=False)}"
         )
-        instructions = str(skill_instructions or "").strip()
-        if not instructions:
-            return base_prompt
-        identity = "@".join(
-            value
-            for value in (
-                str(skill_name or "").strip(),
-                str(skill_version or "").strip(),
-            )
-            if value
-        )
-        return (
-            f"{base_prompt}\nActive project skill {identity}:\n"
-            f"{instructions[:6000]}"
-        )
+        return base_prompt
 
     @staticmethod
     def _single_pass_user_text(

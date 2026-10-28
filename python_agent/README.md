@@ -46,6 +46,20 @@ mock.
 
 ## Consultation and streaming chat
 
+Context engineering is behind `AGENT_CONTEXT_MODE=active|shadow|legacy` (default
+`active`). The allowlisted `ContextProjector` is always applied to model tool
+observations and public tool traces. In shadow mode, `ContextAssembler` builds a
+candidate task view and token estimate while the legacy planning prompt still
+drives the answer. `active` uses the task view, bounded input budget and
+second-round fact delta; `legacy` restores the old prompt. Configure
+`AGENT_CONTEXT_WINDOW_TOKENS` for the selected model and reserve
+`AGENT_CONTEXT_SAFETY_TOKENS` (default 2048) plus the planner's output budget.
+The 100-case synthetic prompt contract is reproducible with
+`python -m evaluation.context_projection_ab` from `python_agent/`; it does not
+measure provider usage or answer quality. The Java-owned derived goal projection
+requires `sql/migrations/20261028_add_chat_context_projection.sql` on existing
+MySQL databases.
+
 Both `POST /api/chat` and `POST /api/chat/stream` use the same Agentic RAG
 consultation service. It performs trusted policy retrieval, one bounded
 multi-query rewrite when needed, and then either persists a grounded answer
@@ -168,9 +182,7 @@ Agent 启动后会异步预热文本和情绪模型，并用 `OLLAMA_KEEP_ALIVE`
   - `domain/`
     - 零框架依赖的领域模型与枚举
   - `agent/`
-    - 唯一 `AfterSalesAgent`、确定性 Router、运行上下文和复杂 Workflow
-  - `skills/`
-    - 仅保存 `SKILL.md`、引用资料和展示元数据
+    - `AfterSalesAgent` 入口、确定性 Router、会话 ReAct 图和正式审核图
   - `tools/`
     - 查询、审核和提交等受控确定性动作的公共入口
   - `application/`
@@ -194,7 +206,7 @@ Agent 启动后会异步预热文本和情绪模型，并用 `OLLAMA_KEEP_ALIVE`
 - `demos/`
   - 本地测试页面，不参与 Spring Boot 主调用链路
 
-复杂 Skill 的执行代码位于 `after_sales_agent/agent/workflows/`；`after_sales_agent/skills/` 不放 Python 业务实现。
+会话咨询的有界 ReAct 循环和正式审核的固定图均位于 `after_sales_agent/agent/workflows/`。
 
 ## 启动方式
 

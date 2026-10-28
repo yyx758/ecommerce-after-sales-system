@@ -10,9 +10,23 @@ import uuid
 
 @dataclass(frozen=True)
 class NativeDecision:
-    action: dict[str, Any]
+    actions: tuple[dict[str, Any], ...]
     assistant_message: dict[str, Any]
     provider_tool_call_shape: str
+    usage: dict[str, Any] | None = None
+
+    @property
+    def action(self) -> dict[str, Any]:
+        """The single action of a one-call decision.
+
+        A planning round may return several calls, so the singular accessor
+        refuses to guess which one was meant.
+        """
+        if len(self.actions) != 1:
+            raise FunctionCallingProtocolError(
+                f"expected exactly one action but got {len(self.actions)}"
+            )
+        return self.actions[0]
 
 
 class FunctionCallingProtocolError(ValueError):
@@ -20,20 +34,39 @@ class FunctionCallingProtocolError(ValueError):
 
 
 class FunctionCallingAdapter:
-    """Translate one provider-native tool call into the existing workflow action."""
+    """Translate provider-native tool calls into workflow actions.
+
+    ``allowed_names`` is the hard boundary of the calling agent: a tool that
+    is not listed is never rendered into the provider tool list, so the model
+    cannot select it because it cannot see it.
+    """
 
     def __init__(
         self,
         *,
         client: Any,
-        registry: Any,
+        registry: Any = None,
         temperature: float = 0.2,
         max_tokens: int = 600,
+        allowed_names: frozenset[str] | None = None,
+        tool_specs: list[dict[str, Any]] | None = None,
     ) -> None:
         self._client = client
         self._registry = registry
         self._temperature = temperature
         self._max_tokens = max_tokens
+        self._allowed_names = allowed_names
+        self._tool_specs = tool_specs
+
+    def _effective_specs(self) -> list[dict[str, Any]]:
+        specs = (
+            list(self._tool_specs)
+            if self._tool_specs is not None
+            else list(self._registry.tool_specs())
+        )
+        if self._allowed_names is None:
+            return specs
+        return [spec for spec in specs if spec["name"] in self._allowed_names]
 
     def decide(
         self,
@@ -42,53 +75,76 @@ class FunctionCallingAdapter:
         payload: dict[str, Any],
         prior_messages: list[dict[str, Any]],
     ) -> NativeDecision:
-        provider_tools = self._provider_tools()
-        response = self._client.chat(
-            [
-                {"role": "system", "content": system_prompt},
+        return self.decide_turn(
+            system_prompt=system_prompt,
+            messages=[
                 *prior_messages,
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False, separators=(",", ":"))},
             ],
+        )
+
+    def decide_turn(
+        self,
+        *,
+        system_prompt: str,
+        messages: list[dict[str, Any]],
+    ) -> NativeDecision:
+        """Run one planning round against an explicit message history.
+
+        A tool loop needs the assistant/tool turns to stay adjacent, so the
+        caller owns the history instead of having it rebuilt per call.
+        """
+        provider_tools = self._provider_tools()
+        response = self._client.chat(
+            [{"role": "system", "content": system_prompt}, *messages],
             tools=provider_tools,
             tool_choice="required",
             temperature=self._temperature,
             max_tokens=self._max_tokens,
         )
         assistant_message, provider_shape = self._assistant_message(response)
-        tool_call = self._single_tool_call(assistant_message)
-        call_id = self._call_id(tool_call, provider_shape)
-        self._validate_call_type(tool_call, provider_shape)
-
-        function = tool_call.get("function")
-        if not isinstance(function, dict):
-            raise FunctionCallingProtocolError("tool call function is required")
-        name = function.get("name")
-        if not isinstance(name, str) or not name.strip():
-            raise FunctionCallingProtocolError("tool call name is required")
-        name = name.strip()
-        if name not in self._known_names():
-            raise FunctionCallingProtocolError(f"unknown tool call: {name}")
-        arguments = self._arguments(function.get("arguments"), provider_shape)
-        self._validate_schema_value(
-            arguments,
-            self._schema_for_name(name, provider_tools),
-            path=f"{name}.arguments",
-        )
+        raw_calls = self._tool_calls(assistant_message)
+        actions: list[dict[str, Any]] = []
+        canonical_calls: list[dict[str, Any]] = []
+        for raw_call in raw_calls:
+            call_id = self._call_id(raw_call, provider_shape)
+            self._validate_call_type(raw_call, provider_shape)
+            function = raw_call.get("function")
+            if not isinstance(function, dict):
+                raise FunctionCallingProtocolError("tool call function is required")
+            name = function.get("name")
+            if not isinstance(name, str) or not name.strip():
+                raise FunctionCallingProtocolError("tool call name is required")
+            name = name.strip()
+            if name not in self._known_names():
+                raise FunctionCallingProtocolError(f"unknown tool call: {name}")
+            arguments = self._arguments(function.get("arguments"), provider_shape)
+            self._validate_schema_value(
+                arguments,
+                self._schema_for_name(name, provider_tools),
+                path=f"{name}.arguments",
+            )
+            canonical_calls.append({
+                "id": call_id,
+                "type": "function",
+                "function": {"name": name, "arguments": arguments},
+            })
+            actions.append(self._normalize_action(name, arguments, call_id))
+        self._assert_single_terminal(actions)
         assistant_message = self._canonical_assistant_message(
             assistant_message,
-            call_id=call_id,
-            name=name,
-            arguments=arguments,
+            calls=canonical_calls,
         )
         return NativeDecision(
-            action=self._normalize_action(name, arguments, call_id),
+            actions=tuple(actions),
             assistant_message=assistant_message,
             provider_tool_call_shape=provider_shape,
+            usage=response.get("usage") if isinstance(response.get("usage"), dict) else None,
         )
 
     def _provider_tools(self) -> list[dict[str, Any]]:
         tools = []
-        for spec in self._registry.tool_specs():
+        for spec in self._effective_specs():
             tools.append({
                 "type": "function",
                 "function": {
@@ -107,6 +163,8 @@ class FunctionCallingAdapter:
                     "properties": {
                         "assistant_reply": {"type": "string"},
                         "need_human": {"type": "boolean"},
+                        "clarification_needed": {"type": "boolean"},
+                        "issue_type": {"type": "string"},
                         "evidence_needed": {"type": "array", "items": {"type": "string"}},
                     },
                     "required": ["assistant_reply"],
@@ -117,7 +175,20 @@ class FunctionCallingAdapter:
         return tools
 
     def _known_names(self) -> set[str]:
-        return set(self._registry.registry()) | {"final_reply"}
+        """Only tools whose schema was shown to the model may be called."""
+        return {spec["name"] for spec in self._effective_specs()} | {"final_reply"}
+
+    @staticmethod
+    def _assert_single_terminal(actions: list[dict[str, Any]]) -> None:
+        """A terminal answer cannot be mixed with further tool calls."""
+        terminal = [
+            action for action in actions
+            if action.get("action") in {"final_reply", "human_handoff"}
+        ]
+        if terminal and len(actions) > 1:
+            raise FunctionCallingProtocolError(
+                "a terminal action must be the only action in a planning round"
+            )
 
     @staticmethod
     def _schema_for_name(name: str, provider_tools: list[dict[str, Any]]) -> dict[str, Any]:
@@ -219,11 +290,14 @@ class FunctionCallingAdapter:
         return message, provider_shape
 
     @staticmethod
-    def _single_tool_call(assistant_message: dict[str, Any]) -> dict[str, Any]:
+    def _tool_calls(assistant_message: dict[str, Any]) -> list[dict[str, Any]]:
         calls = assistant_message.get("tool_calls")
-        if not isinstance(calls, list) or len(calls) != 1 or not isinstance(calls[0], dict):
-            raise FunctionCallingProtocolError("model response must contain exactly one tool call")
-        return calls[0]
+        if not isinstance(calls, list) or not calls:
+            raise FunctionCallingProtocolError("model response must contain at least one tool call")
+        for index, call in enumerate(calls):
+            if not isinstance(call, dict):
+                raise FunctionCallingProtocolError(f"tool call {index} must be an object")
+        return list(calls)
 
     @staticmethod
     def _arguments(raw: Any, provider_shape: str) -> dict[str, Any]:
@@ -265,9 +339,7 @@ class FunctionCallingAdapter:
     def _canonical_assistant_message(
         source: dict[str, Any],
         *,
-        call_id: str,
-        name: str,
-        arguments: dict[str, Any],
+        calls: list[dict[str, Any]],
     ) -> dict[str, Any]:
         content = source.get("content")
         if content is not None and not isinstance(content, str):
@@ -275,14 +347,17 @@ class FunctionCallingAdapter:
         return {
             "role": "assistant",
             "content": content,
-            "tool_calls": [{
-                "id": call_id,
-                "type": "function",
-                "function": {
-                    "name": name,
-                    "arguments": deepcopy(arguments),
-                },
-            }],
+            "tool_calls": [
+                {
+                    "id": call["id"],
+                    "type": "function",
+                    "function": {
+                        "name": call["function"]["name"],
+                        "arguments": deepcopy(call["function"]["arguments"]),
+                    },
+                }
+                for call in calls
+            ],
         }
 
     @staticmethod
@@ -301,6 +376,10 @@ class FunctionCallingAdapter:
             }
             if "need_human" in arguments:
                 action["need_human"] = arguments["need_human"]
+            if "clarification_needed" in arguments:
+                action["clarification_needed"] = arguments["clarification_needed"]
+            if "issue_type" in arguments:
+                action["issue_type"] = arguments["issue_type"]
             if "evidence_needed" in arguments:
                 action["evidence_needed"] = arguments["evidence_needed"]
             return action

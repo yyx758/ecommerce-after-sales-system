@@ -11,7 +11,7 @@ from .contracts import (
 
 
 SOP_REVIEW_MODE = "SOP_AUTOMATED"
-ESCALATED_REVIEW_MODE = "COMPLEX_SKILL_REVIEW"
+ESCALATED_REVIEW_MODE = "COMPLEX_REVIEW"
 
 
 @dataclass(frozen=True)
@@ -37,7 +37,7 @@ class FormalReviewSop:
     ) -> EscalationDecision:
         reasons: list[str] = []
         if not review.policy_success:
-            reasons.append("policy_skill_failed")
+            reasons.append("policy_check_failed")
         if not review.trusted_policy_eligible or not review.policy_version_matched:
             reasons.append("policy_not_authoritative")
         if (
@@ -52,7 +52,7 @@ class FormalReviewSop:
         if review.risk_signals or review.evidence_consistent is False:
             reasons.append("evidence_conflict")
         if not review.visual_success:
-            reasons.append("evidence_skill_failed")
+            reasons.append("evidence_check_failed")
         elif (
             not review.visual_verifiable
             or review.visual_confidence < minimum_review_confidence

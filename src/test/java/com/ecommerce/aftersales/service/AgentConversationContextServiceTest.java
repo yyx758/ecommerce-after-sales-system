@@ -6,6 +6,7 @@ import com.ecommerce.aftersales.dto.AgentGatewayDtos;
 import com.ecommerce.aftersales.entity.ChatMessage;
 import com.ecommerce.aftersales.entity.ChatSession;
 import com.ecommerce.aftersales.mapper.ChatMessageMapper;
+import com.ecommerce.aftersales.mapper.ChatContextProjectionMapper;
 import com.ecommerce.aftersales.mapper.ChatSessionMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -16,6 +17,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -23,12 +25,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 
 @ExtendWith(MockitoExtension.class)
 class AgentConversationContextServiceTest {
 
     @Mock private ChatSessionMapper chatSessionMapper;
     @Mock private ChatMessageMapper chatMessageMapper;
+    @Mock private ChatContextProjectionMapper projectionMapper;
     @InjectMocks private AgentConversationContextService service;
 
     @Test
@@ -149,6 +154,66 @@ class AgentConversationContextServiceTest {
         assertThat(session.getUserQuery()).isEqualTo("耳机外壳破裂，希望退款");
         assertThat(session.getUserHidden()).isZero();
         verify(chatSessionMapper).updateById(session);
+    }
+
+    @Test
+    void supplementKeepsTheOriginalGoalAndPassesTheNewMessageId() {
+        AgentGatewayDtos.ChatRequest request = request("11", 101L);
+        request.setMessage("已经上传了新的问题凭证");
+        request.setHistory_summary(new java.util.LinkedHashMap<>(Map.of(
+                "current_user_goal", "申请退款",
+                "current_user_goal_message_id", "10")));
+        ChatSession session = new ChatSession();
+        session.setId(101L);
+        session.setUserId(11L);
+        when(chatSessionMapper.selectById(101L)).thenReturn(session);
+        when(projectionMapper.find(101L)).thenReturn(Map.of(
+                "last_message_id", 10L, "goal_message_id", 10L,
+                "goal_text", "申请退款", "goal_status", "active"));
+        doAnswer(invocation -> {
+            ChatMessage inserted = invocation.getArgument(0);
+            inserted.setId(20L);
+            return 1;
+        }).when(chatMessageMapper).insert(any(ChatMessage.class));
+
+        service.persistCurrentUserMessage(request);
+
+        assertThat(request.getHistory_summary())
+                .containsEntry("current_user_goal", "申请退款")
+                .containsEntry("current_message_id", "20")
+                .containsEntry("goal_relation", "SUPPLEMENT");
+        verify(projectionMapper).saveIfNewer(eq(101L), eq(20L), eq(10L),
+                eq("申请退款"), eq("active"));
+    }
+
+    @Test
+    void explicitNewRequestStartsAReplacementGoal() {
+        AgentGatewayDtos.ChatRequest request = request("11", 101L);
+        request.setMessage("我想查询订单物流");
+        request.setHistory_summary(new java.util.LinkedHashMap<>(Map.of(
+                "current_user_goal", "申请退款",
+                "current_user_goal_message_id", "10")));
+        ChatSession session = new ChatSession();
+        session.setId(101L);
+        session.setUserId(11L);
+        when(chatSessionMapper.selectById(101L)).thenReturn(session);
+        when(projectionMapper.find(101L)).thenReturn(Map.of(
+                "last_message_id", 10L, "goal_message_id", 10L,
+                "goal_text", "申请退款", "goal_status", "active"));
+        doAnswer(invocation -> {
+            ChatMessage inserted = invocation.getArgument(0);
+            inserted.setId(21L);
+            return 1;
+        }).when(chatMessageMapper).insert(any(ChatMessage.class));
+
+        service.persistCurrentUserMessage(request);
+
+        assertThat(request.getHistory_summary())
+                .containsEntry("current_user_goal", "我想查询订单物流")
+                .containsEntry("current_user_goal_message_id", "21")
+                .containsEntry("goal_relation", "NEW_GOAL");
+        verify(projectionMapper).saveIfNewer(eq(101L), eq(21L), eq(21L),
+                eq("我想查询订单物流"), eq("active"));
     }
 
     private static AgentGatewayDtos.ChatRequest request(String userId, Long sessionId) {

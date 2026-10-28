@@ -1,0 +1,51 @@
+{
+  "kind": "live_paired_model_run",
+  "case_count": 1,
+  "runs_per_mode": 1,
+  "answer_quality_human_review_required": true,
+  "rows": [
+    {
+      "case_id": "CTX-001",
+      "scenario": "普通政策咨询",
+      "run": 1,
+      "mode": "legacy",
+      "latency_ms": 39277.85,
+      "provider_input_tokens": 6270,
+      "provider_usage_calls": 2,
+      "tool_calls": [
+        "get_order_detail",
+        "get_existing_after_sales",
+        "retrieve_knowledge",
+        "handoff_to_human"
+      ],
+      "need_human": true,
+      "citations": [],
+      "handoff_reason": "evidence_request_unverified",
+      "error": null
+    },
+    {
+      "case_id": "CTX-001",
+      "scenario": "普通政策咨询",
+      "run": 1,
+      "mode": "active",
+      "latency_ms": 39462.75,
+      "provider_input_tokens": 7073,
+      "provider_usage_calls": 2,
+      "tool_calls": [
+        "get_order_detail",
+        "get_existing_after_sales",
+        "retrieve_knowledge",
+        "request_missing_evidence"
+      ],
+      "need_human": false,
+      "citations": [
+        {
+          "source_code": "P",
+          "chunk_id": "c1"
+        }
+      ],
+      "handoff_reason": null,
+      "error": null
+    }
+  ]
+}

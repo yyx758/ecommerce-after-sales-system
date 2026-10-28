@@ -1,0 +1,710 @@
+{
+  "kind": "offline_prompt_contract_only",
+  "case_count": 100,
+  "provider_usage_measured": false,
+  "answer_quality_measured": false,
+  "median_legacy_estimated_tokens": 4817.0,
+  "median_active_estimated_tokens": 5016.0,
+  "rows": [
+    {
+      "case_id": "CTX-001",
+      "scenario": "普通政策咨询",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4796,
+      "active_estimated_input_tokens": 5005
+    },
+    {
+      "case_id": "CTX-002",
+      "scenario": "普通政策咨询",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4796,
+      "active_estimated_input_tokens": 5005
+    },
+    {
+      "case_id": "CTX-003",
+      "scenario": "普通政策咨询",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4796,
+      "active_estimated_input_tokens": 5005
+    },
+    {
+      "case_id": "CTX-004",
+      "scenario": "普通政策咨询",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4796,
+      "active_estimated_input_tokens": 5005
+    },
+    {
+      "case_id": "CTX-005",
+      "scenario": "普通政策咨询",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4796,
+      "active_estimated_input_tokens": 5005
+    },
+    {
+      "case_id": "CTX-006",
+      "scenario": "普通政策咨询",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4796,
+      "active_estimated_input_tokens": 5005
+    },
+    {
+      "case_id": "CTX-007",
+      "scenario": "普通政策咨询",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4796,
+      "active_estimated_input_tokens": 5005
+    },
+    {
+      "case_id": "CTX-008",
+      "scenario": "普通政策咨询",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4796,
+      "active_estimated_input_tokens": 5005
+    },
+    {
+      "case_id": "CTX-009",
+      "scenario": "普通政策咨询",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4817,
+      "active_estimated_input_tokens": 5016
+    },
+    {
+      "case_id": "CTX-010",
+      "scenario": "普通政策咨询",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4796,
+      "active_estimated_input_tokens": 5005
+    },
+    {
+      "case_id": "CTX-011",
+      "scenario": "十轮长会话",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-012",
+      "scenario": "十轮长会话",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-013",
+      "scenario": "十轮长会话",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-014",
+      "scenario": "十轮长会话",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-015",
+      "scenario": "十轮长会话",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-016",
+      "scenario": "十轮长会话",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-017",
+      "scenario": "十轮长会话",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-018",
+      "scenario": "十轮长会话",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-019",
+      "scenario": "十轮长会话",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4823,
+      "active_estimated_input_tokens": 5022
+    },
+    {
+      "case_id": "CTX-020",
+      "scenario": "十轮长会话",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-021",
+      "scenario": "多订单核验",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4838,
+      "active_estimated_input_tokens": 5037
+    },
+    {
+      "case_id": "CTX-022",
+      "scenario": "多订单核验",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4838,
+      "active_estimated_input_tokens": 5037
+    },
+    {
+      "case_id": "CTX-023",
+      "scenario": "多订单核验",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4838,
+      "active_estimated_input_tokens": 5037
+    },
+    {
+      "case_id": "CTX-024",
+      "scenario": "多订单核验",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4838,
+      "active_estimated_input_tokens": 5037
+    },
+    {
+      "case_id": "CTX-025",
+      "scenario": "多订单核验",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4838,
+      "active_estimated_input_tokens": 5037
+    },
+    {
+      "case_id": "CTX-026",
+      "scenario": "多订单核验",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4838,
+      "active_estimated_input_tokens": 5037
+    },
+    {
+      "case_id": "CTX-027",
+      "scenario": "多订单核验",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4838,
+      "active_estimated_input_tokens": 5037
+    },
+    {
+      "case_id": "CTX-028",
+      "scenario": "多订单核验",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4838,
+      "active_estimated_input_tokens": 5037
+    },
+    {
+      "case_id": "CTX-029",
+      "scenario": "多订单核验",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4859,
+      "active_estimated_input_tokens": 5048
+    },
+    {
+      "case_id": "CTX-030",
+      "scenario": "多订单核验",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4838,
+      "active_estimated_input_tokens": 5037
+    },
+    {
+      "case_id": "CTX-031",
+      "scenario": "政策版本变更",
+      "expected_safe_action": "reverify_policy",
+      "legacy_estimated_input_tokens": 4841,
+      "active_estimated_input_tokens": 5040
+    },
+    {
+      "case_id": "CTX-032",
+      "scenario": "政策版本变更",
+      "expected_safe_action": "reverify_policy",
+      "legacy_estimated_input_tokens": 4841,
+      "active_estimated_input_tokens": 5040
+    },
+    {
+      "case_id": "CTX-033",
+      "scenario": "政策版本变更",
+      "expected_safe_action": "reverify_policy",
+      "legacy_estimated_input_tokens": 4841,
+      "active_estimated_input_tokens": 5040
+    },
+    {
+      "case_id": "CTX-034",
+      "scenario": "政策版本变更",
+      "expected_safe_action": "reverify_policy",
+      "legacy_estimated_input_tokens": 4841,
+      "active_estimated_input_tokens": 5040
+    },
+    {
+      "case_id": "CTX-035",
+      "scenario": "政策版本变更",
+      "expected_safe_action": "reverify_policy",
+      "legacy_estimated_input_tokens": 4841,
+      "active_estimated_input_tokens": 5040
+    },
+    {
+      "case_id": "CTX-036",
+      "scenario": "政策版本变更",
+      "expected_safe_action": "reverify_policy",
+      "legacy_estimated_input_tokens": 4841,
+      "active_estimated_input_tokens": 5040
+    },
+    {
+      "case_id": "CTX-037",
+      "scenario": "政策版本变更",
+      "expected_safe_action": "reverify_policy",
+      "legacy_estimated_input_tokens": 4841,
+      "active_estimated_input_tokens": 5040
+    },
+    {
+      "case_id": "CTX-038",
+      "scenario": "政策版本变更",
+      "expected_safe_action": "reverify_policy",
+      "legacy_estimated_input_tokens": 4841,
+      "active_estimated_input_tokens": 5040
+    },
+    {
+      "case_id": "CTX-039",
+      "scenario": "政策版本变更",
+      "expected_safe_action": "reverify_policy",
+      "legacy_estimated_input_tokens": 4862,
+      "active_estimated_input_tokens": 5051
+    },
+    {
+      "case_id": "CTX-040",
+      "scenario": "政策版本变更",
+      "expected_safe_action": "reverify_policy",
+      "legacy_estimated_input_tokens": 4841,
+      "active_estimated_input_tokens": 5040
+    },
+    {
+      "case_id": "CTX-041",
+      "scenario": "模糊图片后补传",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-042",
+      "scenario": "模糊图片后补传",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-043",
+      "scenario": "模糊图片后补传",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-044",
+      "scenario": "模糊图片后补传",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-045",
+      "scenario": "模糊图片后补传",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-046",
+      "scenario": "模糊图片后补传",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-047",
+      "scenario": "模糊图片后补传",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-048",
+      "scenario": "模糊图片后补传",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-049",
+      "scenario": "模糊图片后补传",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4823,
+      "active_estimated_input_tokens": 5022
+    },
+    {
+      "case_id": "CTX-050",
+      "scenario": "模糊图片后补传",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-051",
+      "scenario": "证据充分后陈述矛盾",
+      "expected_safe_action": "clarify_conflict",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-052",
+      "scenario": "证据充分后陈述矛盾",
+      "expected_safe_action": "clarify_conflict",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-053",
+      "scenario": "证据充分后陈述矛盾",
+      "expected_safe_action": "clarify_conflict",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-054",
+      "scenario": "证据充分后陈述矛盾",
+      "expected_safe_action": "clarify_conflict",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-055",
+      "scenario": "证据充分后陈述矛盾",
+      "expected_safe_action": "clarify_conflict",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-056",
+      "scenario": "证据充分后陈述矛盾",
+      "expected_safe_action": "clarify_conflict",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-057",
+      "scenario": "证据充分后陈述矛盾",
+      "expected_safe_action": "clarify_conflict",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-058",
+      "scenario": "证据充分后陈述矛盾",
+      "expected_safe_action": "clarify_conflict",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-059",
+      "scenario": "证据充分后陈述矛盾",
+      "expected_safe_action": "clarify_conflict",
+      "legacy_estimated_input_tokens": 4823,
+      "active_estimated_input_tokens": 5022
+    },
+    {
+      "case_id": "CTX-060",
+      "scenario": "证据充分后陈述矛盾",
+      "expected_safe_action": "clarify_conflict",
+      "legacy_estimated_input_tokens": 4802,
+      "active_estimated_input_tokens": 5011
+    },
+    {
+      "case_id": "CTX-061",
+      "scenario": "订单状态推进",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4832,
+      "active_estimated_input_tokens": 5031
+    },
+    {
+      "case_id": "CTX-062",
+      "scenario": "订单状态推进",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4832,
+      "active_estimated_input_tokens": 5031
+    },
+    {
+      "case_id": "CTX-063",
+      "scenario": "订单状态推进",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4832,
+      "active_estimated_input_tokens": 5031
+    },
+    {
+      "case_id": "CTX-064",
+      "scenario": "订单状态推进",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4832,
+      "active_estimated_input_tokens": 5031
+    },
+    {
+      "case_id": "CTX-065",
+      "scenario": "订单状态推进",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4832,
+      "active_estimated_input_tokens": 5031
+    },
+    {
+      "case_id": "CTX-066",
+      "scenario": "订单状态推进",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4832,
+      "active_estimated_input_tokens": 5031
+    },
+    {
+      "case_id": "CTX-067",
+      "scenario": "订单状态推进",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4832,
+      "active_estimated_input_tokens": 5031
+    },
+    {
+      "case_id": "CTX-068",
+      "scenario": "订单状态推进",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4832,
+      "active_estimated_input_tokens": 5031
+    },
+    {
+      "case_id": "CTX-069",
+      "scenario": "订单状态推进",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4853,
+      "active_estimated_input_tokens": 5042
+    },
+    {
+      "case_id": "CTX-070",
+      "scenario": "订单状态推进",
+      "expected_safe_action": "answer_with_sources",
+      "legacy_estimated_input_tokens": 4832,
+      "active_estimated_input_tokens": 5031
+    },
+    {
+      "case_id": "CTX-071",
+      "scenario": "同版本状态冲突",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4844,
+      "active_estimated_input_tokens": 5043
+    },
+    {
+      "case_id": "CTX-072",
+      "scenario": "同版本状态冲突",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4844,
+      "active_estimated_input_tokens": 5043
+    },
+    {
+      "case_id": "CTX-073",
+      "scenario": "同版本状态冲突",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4844,
+      "active_estimated_input_tokens": 5043
+    },
+    {
+      "case_id": "CTX-074",
+      "scenario": "同版本状态冲突",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4844,
+      "active_estimated_input_tokens": 5043
+    },
+    {
+      "case_id": "CTX-075",
+      "scenario": "同版本状态冲突",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4844,
+      "active_estimated_input_tokens": 5043
+    },
+    {
+      "case_id": "CTX-076",
+      "scenario": "同版本状态冲突",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4844,
+      "active_estimated_input_tokens": 5043
+    },
+    {
+      "case_id": "CTX-077",
+      "scenario": "同版本状态冲突",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4844,
+      "active_estimated_input_tokens": 5043
+    },
+    {
+      "case_id": "CTX-078",
+      "scenario": "同版本状态冲突",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4844,
+      "active_estimated_input_tokens": 5043
+    },
+    {
+      "case_id": "CTX-079",
+      "scenario": "同版本状态冲突",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4865,
+      "active_estimated_input_tokens": 5054
+    },
+    {
+      "case_id": "CTX-080",
+      "scenario": "同版本状态冲突",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4844,
+      "active_estimated_input_tokens": 5043
+    },
+    {
+      "case_id": "CTX-081",
+      "scenario": "模型超时兜底",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4817,
+      "active_estimated_input_tokens": 5016
+    },
+    {
+      "case_id": "CTX-082",
+      "scenario": "模型超时兜底",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4817,
+      "active_estimated_input_tokens": 5016
+    },
+    {
+      "case_id": "CTX-083",
+      "scenario": "模型超时兜底",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4817,
+      "active_estimated_input_tokens": 5016
+    },
+    {
+      "case_id": "CTX-084",
+      "scenario": "模型超时兜底",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4817,
+      "active_estimated_input_tokens": 5016
+    },
+    {
+      "case_id": "CTX-085",
+      "scenario": "模型超时兜底",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4817,
+      "active_estimated_input_tokens": 5016
+    },
+    {
+      "case_id": "CTX-086",
+      "scenario": "模型超时兜底",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4817,
+      "active_estimated_input_tokens": 5016
+    },
+    {
+      "case_id": "CTX-087",
+      "scenario": "模型超时兜底",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4817,
+      "active_estimated_input_tokens": 5016
+    },
+    {
+      "case_id": "CTX-088",
+      "scenario": "模型超时兜底",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4817,
+      "active_estimated_input_tokens": 5016
+    },
+    {
+      "case_id": "CTX-089",
+      "scenario": "模型超时兜底",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4838,
+      "active_estimated_input_tokens": 5027
+    },
+    {
+      "case_id": "CTX-090",
+      "scenario": "模型超时兜底",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4817,
+      "active_estimated_input_tokens": 5016
+    },
+    {
+      "case_id": "CTX-091",
+      "scenario": "无效输出兜底",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4787,
+      "active_estimated_input_tokens": 4996
+    },
+    {
+      "case_id": "CTX-092",
+      "scenario": "无效输出兜底",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4787,
+      "active_estimated_input_tokens": 4996
+    },
+    {
+      "case_id": "CTX-093",
+      "scenario": "无效输出兜底",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4787,
+      "active_estimated_input_tokens": 4996
+    },
+    {
+      "case_id": "CTX-094",
+      "scenario": "无效输出兜底",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4787,
+      "active_estimated_input_tokens": 4996
+    },
+    {
+      "case_id": "CTX-095",
+      "scenario": "无效输出兜底",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4787,
+      "active_estimated_input_tokens": 4996
+    },
+    {
+      "case_id": "CTX-096",
+      "scenario": "无效输出兜底",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4787,
+      "active_estimated_input_tokens": 4996
+    },
+    {
+      "case_id": "CTX-097",
+      "scenario": "无效输出兜底",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4787,
+      "active_estimated_input_tokens": 4996
+    },
+    {
+      "case_id": "CTX-098",
+      "scenario": "无效输出兜底",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4787,
+      "active_estimated_input_tokens": 4996
+    },
+    {
+      "case_id": "CTX-099",
+      "scenario": "无效输出兜底",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4808,
+      "active_estimated_input_tokens": 5007
+    },
+    {
+      "case_id": "CTX-100",
+      "scenario": "无效输出兜底",
+      "expected_safe_action": "manual_handoff",
+      "legacy_estimated_input_tokens": 4787,
+      "active_estimated_input_tokens": 4996
+    }
+  ]
+}

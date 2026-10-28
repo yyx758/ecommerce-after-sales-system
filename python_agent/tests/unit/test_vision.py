@@ -76,15 +76,11 @@ def test_prompt_has_no_fixed_point_nine_confidence_anchor() -> None:
     assert "damage_confidence" in prompt
 
 
-def test_prompt_binds_versioned_formal_review_skill() -> None:
-    prompt = VisionReviewService._single_pass_system_prompt(
-        skill_name="formal-review",
-        skill_version="version-1",
-        skill_instructions="只评估直接可见的凭证。",
-    )
+def test_prompt_keeps_visual_review_within_observable_facts() -> None:
+    prompt = VisionReviewService._single_pass_system_prompt()
 
-    assert "formal-review@version-1" in prompt
-    assert "只评估直接可见的凭证。" in prompt
+    assert "只分析当前一张图" in prompt
+    assert "不得作出审核通过" in prompt
 
 
 def test_disk_cache_survives_memory_cache_clear(tmp_path, monkeypatch) -> None:

@@ -72,10 +72,10 @@ def test_openai_compatible_contract_appends_endpoint() -> None:
     )
 
     assert service._embedding_url() == "https://embedding.test/v1/embeddings"
+    # openai_compatible 载荷刻意不带 dimensions：并非所有兼容服务都支持该参数。
     assert service._embedding_payload(["a"]) == {
         "model": "text-embedding-v3",
         "input": ["a"],
-        "dimensions": 3,
     }
     assert service._parse_embedding_response(
         {"data": [{"embedding": [0.1, 0.2, 0.3]}]}

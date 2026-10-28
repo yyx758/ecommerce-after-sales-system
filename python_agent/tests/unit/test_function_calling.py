@@ -189,15 +189,10 @@ class FunctionCallingAdapterTest(unittest.TestCase):
         self.assertEqual(0, registry.call_count)
 
     def test_rejects_malformed_or_ambiguous_ollama_shapes(self) -> None:
-        two_calls = ollama_tool_response()
-        two_calls["message"]["tool_calls"].append({
-            "function": {"name": "search_user_orders", "arguments": {"keyword": "A200"}},
-        })
         ambiguous = ollama_tool_response()
         ambiguous["choices"] = tool_response()["choices"]
         malformed = [
             {"message": {"role": "assistant", "tool_calls": []}},
-            two_calls,
             ollama_tool_response(arguments=[]),
             ollama_tool_response(arguments='{"keyword":"A100"}'),
             ollama_tool_response(call_id=" "),
@@ -234,10 +229,6 @@ class FunctionCallingAdapterTest(unittest.TestCase):
     def test_rejects_invalid_tool_calls(self) -> None:
         invalid_responses = [
             {"choices": [{"message": {"role": "assistant", "tool_calls": []}}]},
-            {"choices": [{"message": {"role": "assistant", "tool_calls": [
-                tool_response()["choices"][0]["message"]["tool_calls"][0],
-                tool_response(call_id="call-2")["choices"][0]["message"]["tool_calls"][0],
-            ]}}]},
             tool_response(name="not_registered"),
             tool_response(call_id=" "),
             tool_response(call_type="custom"),
@@ -254,6 +245,57 @@ class FunctionCallingAdapterTest(unittest.TestCase):
                 with self.assertRaises(FunctionCallingProtocolError):
                     adapter.decide(system_prompt="system", payload={}, prior_messages=[])
                 self.assertEqual(0, registry.call_count)
+
+    def test_parses_several_tool_calls_in_one_planning_round(self) -> None:
+        response = {"choices": [{"message": {"role": "assistant", "content": None, "tool_calls": [
+            tool_response()["choices"][0]["message"]["tool_calls"][0],
+            tool_response(call_id="call-2")["choices"][0]["message"]["tool_calls"][0],
+        ]}}]}
+        adapter, _, registry = self._adapter(response)
+
+        decision = adapter.decide(system_prompt="system", payload={}, prior_messages=[])
+
+        self.assertEqual(2, len(decision.actions))
+        self.assertEqual(
+            ["search_user_orders", "search_user_orders"],
+            [action["tool_name"] for action in decision.actions],
+        )
+        self.assertEqual(
+            ["call-1", "call-2"],
+            [action["tool_call_id"] for action in decision.actions],
+        )
+        self.assertEqual(2, len(decision.assistant_message["tool_calls"]))
+        self.assertEqual(0, registry.call_count)
+        with self.assertRaises(FunctionCallingProtocolError):
+            _ = decision.action
+
+    def test_a_terminal_action_may_not_be_mixed_with_tool_calls(self) -> None:
+        response = {"choices": [{"message": {"role": "assistant", "content": None, "tool_calls": [
+            tool_response()["choices"][0]["message"]["tool_calls"][0],
+            tool_response(name="final_reply", call_id="call-2")["choices"][0]["message"]["tool_calls"][0],
+        ]}}]}
+        adapter, _, registry = self._adapter(response)
+
+        with self.assertRaises(FunctionCallingProtocolError):
+            adapter.decide(system_prompt="system", payload={}, prior_messages=[])
+        self.assertEqual(0, registry.call_count)
+
+    def test_allowed_names_hide_tools_from_the_model_entirely(self) -> None:
+        adapter, client, _ = self._adapter(tool_response())
+        adapter._allowed_names = frozenset({"search_user_orders"})
+
+        adapter.decide(system_prompt="system", payload={}, prior_messages=[])
+
+        names = [item["function"]["name"] for item in client.requests[0]["tools"]]
+        self.assertEqual(["search_user_orders", "final_reply"], names)
+
+    def test_a_tool_outside_the_allowlist_cannot_be_called(self) -> None:
+        adapter, _, registry = self._adapter(tool_response(name="handoff_to_human"))
+        adapter._allowed_names = frozenset({"search_user_orders"})
+
+        with self.assertRaises(FunctionCallingProtocolError):
+            adapter.decide(system_prompt="system", payload={}, prior_messages=[])
+        self.assertEqual(0, registry.call_count)
 
     def test_forwards_provider_tools_options_and_prior_protocol_messages(self) -> None:
         adapter, client, _ = self._adapter(tool_response())

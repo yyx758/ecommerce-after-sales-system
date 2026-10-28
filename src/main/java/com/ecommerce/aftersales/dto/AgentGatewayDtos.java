@@ -79,6 +79,8 @@ public class AgentGatewayDtos {
     @Data
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class ConversationMessageDto {
+        private String message_id;
+        private String create_time;
         private String role;
         private String content;
     }

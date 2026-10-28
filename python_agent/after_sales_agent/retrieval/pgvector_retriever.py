@@ -33,21 +33,11 @@ from after_sales_agent.retrieval.rrf import rrf_fuse, rrf_fuse_rankings
 
 logger = logging.getLogger("after_sales_agent.rag")
 
-RERANK_THRESHOLDS = {
-    # Retrieval support and automatic approval are separate gates. These
-    # thresholds admit calibrated qwen3-rerank policy matches for answering;
-    # the workflow still requires >= 0.65 plus strict business filters,
-    # version/validity matching and traceable citations before a policy can
-    # contribute to automatic approval.
-    #
-    # Lowered from 0.55 to 0.35 to avoid filtering out relevant chunks
-    # that Reranker ranks lower but are still correct.
-    "after_sales_policy": 0.35,
-    "refund_policy": 0.35,
-    "exchange_rule": 0.35,
-    "evidence_requirement": 0.45,
-    "faq": 0.40,
-}
+#: 阈值只有一处定义：``retrieval_result`` 拥有这份契约，这里只做再导出，
+#: 避免两份副本各自漂移（历史事故：pgvector 与 retrieval_result 各存一份）。
+#: 用绝对导入：该模块会被 characterization 测试用 importlib 独立加载，
+#: 那时没有包上下文，相对导入会失败。
+from after_sales_agent.retrieval.retrieval_result import RERANK_THRESHOLDS  # noqa: E402,F401
 
 
 @dataclass(frozen=True)
@@ -177,11 +167,11 @@ class PgVectorKnowledgeRetriever:
         policy_version: str | None = None,
         as_of_time: datetime | None = None,
         top_k: int | None = None,
-        retrieval_mode: str = "rrf",
+        retrieval_mode: str = "rerank",
         query_id: str | None = None,
     ) -> dict[str, Any]:
         normalized_query = str(query or "").strip()
-        selected_mode = str(retrieval_mode or "rrf").strip().lower()
+        selected_mode = str(retrieval_mode or "rerank").strip().lower()
         if selected_mode not in {"dense", "keyword", "rrf", "rerank"}:
             raise ValueError("retrieval_mode must be one of: dense, keyword, rrf, rerank")
         resolved_as_of_time = as_of_time or datetime.utcnow()
@@ -665,7 +655,9 @@ class PgVectorKnowledgeRetriever:
             candidates=fused,
             top_n=limit,
         )
-        reranker_enabled = bool(getattr(self.reranker.config, "configured", False))
+        reranker_enabled = bool(
+            getattr(getattr(self.reranker, "config", None), "configured", False)
+        )
         output_hits: list[dict[str, Any]] = []
         for raw_hit in reranked.items:
             hit = dict(raw_hit)
@@ -752,7 +744,7 @@ class PgVectorKnowledgeRetriever:
         """Rerank each validated rewrite independently and keep each hit's best score."""
         started_at = time.perf_counter()
         bounded_top_n = max(1, min(len(candidates), 20))
-        if not bool(getattr(self.reranker.config, "configured", False)):
+        if not bool(getattr(getattr(self.reranker, "config", None), "configured", False)):
             return (
                 RerankResult(
                     items=list(candidates[:bounded_top_n]),
@@ -1229,78 +1221,6 @@ class PgVectorKnowledgeRetriever:
         return default
 
     def _vector_search(
-        merchant_code: str | None,
-        product_category: str | None,
-        scene: str | None,
-        intent: str | None,
-        source_type: str | None,
-        policy_version: str | None,
-        as_of_time: datetime,
-        top_k: int | None,
-        plan: FilterPlan,
-    ) -> dict[str, Any]:
-        """Keep the pre-rollout path free of embedding, RRF, and reranker calls."""
-        if not self.config.dsn and source_type not in POLICY_SOURCE_TYPES:
-            local = self._local_knowledge_fallback(
-                query=query,
-                merchant_code=merchant_code,
-                product_category=product_category,
-                scene=scene,
-                intent=intent,
-                source_type=source_type,
-                policy_version=policy_version,
-                top_k=top_k,
-            )
-            local_hits = local.get("hits") or []
-            if local_hits:
-                return self._finalize_result(
-                    {
-                        "mode": "local_json_compatibility",
-                        "query": query,
-                        "hits": local_hits,
-                        "trace": {
-                            **(local.get("trace") or {}),
-                            "retrieval_mode": "compatibility",
-                            "fallback_reason": "RAG_LAYERED_RETRIEVAL_DISABLED",
-                        },
-                    },
-                    plan=plan,
-                    failure_reason=None,
-                    no_answer=False,
-                )
-
-        lexical = self._lexical_fallback(
-            query=query,
-            merchant_code=merchant_code,
-            product_category=product_category,
-            scene=scene,
-            intent=intent,
-            source_type=source_type,
-            policy_version=policy_version,
-            as_of_time=as_of_time,
-            filter_plan=plan,
-            top_k=top_k,
-        )
-        lexical = self._apply_filter_contract(lexical, plan)
-        hits = lexical.get("hits") or []
-        failure_reason = None if hits else str(lexical.get("failure_reason") or "NO_MATCH")
-        return self._finalize_result(
-            {
-                "mode": "lexical_compatibility",
-                "query": query,
-                "hits": hits,
-                "trace": {
-                    **(lexical.get("trace") or {}),
-                    "retrieval_mode": "compatibility",
-                    "fallback_reason": "RAG_LAYERED_RETRIEVAL_DISABLED",
-                },
-            },
-            plan=plan,
-            failure_reason=failure_reason,
-            no_answer=not hits,
-        )
-
-    def _vector_search(
         self,
         *,
         psycopg_module: Any,
@@ -1381,37 +1301,6 @@ class PgVectorKnowledgeRetriever:
     def _rerank_score(hit: dict[str, Any]) -> float:
         from after_sales_agent.retrieval.retrieval_result import rerank_score
         return rerank_score(hit)
-
-    def _keyword_search(
-        self,
-        *,
-        psycopg_module: Any,
-        query: str,
-        merchant_code: str | None,
-        product_category: str | None,
-        scene: str | None,
-        intent: str | None,
-        source_type: str | None,
-        policy_version: str | None,
-        as_of_time: datetime | None,
-        filter_plan: FilterPlan | None,
-        limit: int,
-    ) -> list[dict[str, Any]]:
-        from after_sales_agent.retrieval.search.keyword_search import _keyword_search
-        return _keyword_search(
-            psycopg_module=psycopg_module,
-            config=self.config,
-            query=query,
-            merchant_code=merchant_code,
-            product_category=product_category,
-            scene=scene,
-            intent=intent,
-            source_type=source_type,
-            policy_version=policy_version,
-            as_of_time=as_of_time,
-            filter_plan=filter_plan,
-            limit=limit,
-        )
 
     def _lexical_fallback(
         self,

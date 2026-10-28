@@ -8,6 +8,7 @@ from typing import Any
 
 from .request_tracing import TraceRecorder
 from .agent_metrics import AGENT_RUNTIME_METRICS
+from .trace_store import TRACE_STORE
 
 TRACE_HISTORY: deque[dict[str, object]] = deque(maxlen=120)
 
@@ -33,3 +34,5 @@ def record_trace_event(
     logging.getLogger("api_server.trace").info(
         "agent_trace=%s", json.dumps(event, ensure_ascii=False, separators=(",", ":"), default=str)
     )
+    # 落库是尽力而为：失败只记日志，不影响本次请求返回。
+    TRACE_STORE.persist(event)

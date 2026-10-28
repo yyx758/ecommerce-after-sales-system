@@ -52,7 +52,7 @@ class _PrometheusMetrics:
         )
         self.formal_review_runs = PrometheusCounter(
             "agent_formal_review_runs",
-            "LangGraph formal review skill runs",
+            "LangGraph formal review runs",
             ("action", "outcome"),
             registry=registry,
         )
@@ -104,18 +104,14 @@ class AgentRuntimeMetrics:
     TRACE_STEPS = {
         "read_request_body", "emotion_analyze", "agentic_rag_chat",
         "agent_tool_call", "text_model_call", "review_images",
-        "chat_validate_input", "chat_explicit_handoff",
+        "chat_validate_input", "chat_explicit_handoff", "consultation_load_order",
         "rag_retrieve_initial", "rag_assess_initial", "rag_query_rewrite",
         "rag_retrieve_multi", "rag_assess_rewritten",
         "chat_generate_answer", "java_append_chat_message",
         "java_handoff_to_human",
-        "formal_review_skill", "formal_review_graph",
+        "consultation_plan", "formal_review_graph",
         "review_load_trusted_context",
-        "review_sop_plan", "review_policy_workflow", "review_policy_skill",
-        "review_evidence_workflow", "review_evidence_skill", "review_synthesis",
-        # Retain old labels so historical traces remain queryable.
-        "review_supervisor_plan", "review_policy_agent",
-        "review_evidence_agent", "review_supervisor_synthesize",
+        "review_sop_plan", "review_policy", "review_visual", "review_synthesis",
         "review_deterministic_gate", "java_submit_review",
         "java_request_missing_evidence", "java_submit_manual_review",
         "kafka_idempotency_claim", "kafka_agent_execution",

@@ -11,29 +11,18 @@ from typing import Any, Callable, Protocol
 
 import httpx
 
+from after_sales_agent.config.environment import read_local_env_file
 from after_sales_agent.infrastructure import CircuitBreaker, CircuitOpenError
 
 
 def _read_local_env() -> dict[str, str]:
-    """Read local .env file for configuration values."""
-    repo_root = Path(__file__).resolve().parents[2]
-    candidates = [
-        Path.cwd() / "python_agent" / ".env",
-        Path.cwd() / ".env",
-        repo_root / "python_agent" / ".env",
-    ]
-    values: dict[str, str] = {}
-    for path in candidates:
-        if not path.exists():
-            continue
-        for raw_line in path.read_text(encoding="utf-8").splitlines():
-            line = raw_line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            values[key.strip()] = value.strip().strip('"').strip("'")
-        break
-    return values
+    """Read local .env file for configuration values.
+
+    The file is a fallback only: a value present in the deployment
+    environment always wins, otherwise a stale local file would silently
+    override the environment the process was actually given.
+    """
+    return read_local_env_file()
 
 
 class RerankError(RuntimeError):
@@ -104,8 +93,8 @@ class RerankerConfig:
             base_url=(os.getenv("RERANK_BASE_URL") or file_values.get("RERANK_BASE_URL", "")).strip(),
             api_key=(
                 os.getenv("RERANK_API_KEY")
-                or file_values.get("RERANK_API_KEY")
                 or os.getenv("VISION_API_KEY")
+                or file_values.get("RERANK_API_KEY")
                 or file_values.get("VISION_API_KEY")
                 or ""
             ).strip(),

@@ -629,9 +629,9 @@ def test_terminal_non_retryable_provider_failures_also_release_and_open_breaker(
 def test_retrieval_package_exports_rerank_threshold_contract() -> None:
     from after_sales_agent.retrieval import RERANK_THRESHOLDS
 
-    assert RERANK_THRESHOLDS["after_sales_policy"] == 0.55
-    assert RERANK_THRESHOLDS["evidence_requirement"] == 0.65
-    assert RERANK_THRESHOLDS["faq"] == 0.60
+    assert RERANK_THRESHOLDS["after_sales_policy"] == 0.35
+    assert RERANK_THRESHOLDS["evidence_requirement"] == 0.45
+    assert RERANK_THRESHOLDS["faq"] == 0.40
 
 
 @pytest.mark.parametrize(

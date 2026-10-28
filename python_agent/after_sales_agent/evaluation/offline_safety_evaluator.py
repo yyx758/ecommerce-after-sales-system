@@ -4,9 +4,24 @@ import json
 from pathlib import Path
 from typing import Any, Iterable
 
-from ..application.after_sales_workflow import LangGraphAfterSalesAgent
+from ..agent.safety_guards import (
+    allow_ai_review_submit,
+    best_policy_score,
+    is_explicit_human_request,
+)
+from ..agent.workflows.formal_review.confidence import apply_deterministic_confidence
+from ..agent.workflows.formal_review.contracts import (
+    ReviewAssessment,
+    ReviewProposal,
+    TrustedCaseContext,
+)
+from ..agent.workflows.formal_review.evaluators import (
+    policy_facts,
+    trusted_policy_hits,
+)
 from ..application.request_payload_adapter import build_langgraph_entry_payload
 from ..integrations.java_tool_client import JavaToolClient
+from ..tools import ToolResult
 
 
 def load_cases(path: Path) -> list[dict[str, Any]]:
@@ -35,7 +50,7 @@ def evaluate_cases(cases: Iterable[dict[str, Any]]) -> dict[str, Any]:
     total = len(results)
     handoff_recall = handoff_true_positive / len(handoff_positive) if handoff_positive else 1.0
     report = {
-        "dataset_version": "1.0",
+        "dataset_version": "2.0",
         "cases": total,
         "passed": passed,
         "failed": total - passed,
@@ -57,24 +72,71 @@ def evaluate_cases(cases: Iterable[dict[str, Any]]) -> dict[str, Any]:
     return report
 
 
+def _review_context(order: dict[str, Any]) -> TrustedCaseContext:
+    """Build the review context an evaluation case describes."""
+    return TrustedCaseContext(
+        user_id=str(order.get("user_id") or ""),
+        session_id=None,
+        ticket_id=str(order.get("ticket_id") or order.get("order_id") or ""),
+        order_id=str(order.get("order_id") or ""),
+        ticket_status=str(order.get("status") or ""),
+        merchant_code=order.get("merchant_code") or None,
+        policy_version=order.get("policy_version") or None,
+        product_name=order.get("product_name") or None,
+        product_category=order.get("category") or None,
+        after_sales_type=order.get("after_sales_type") or None,
+        issue_description="",
+        business_time=order.get("after_sales_applied_at") or order.get("create_time"),
+        context_version=str(order.get("context_version") or "evaluation"),
+        evidence_revision=int(order.get("evidence_revision") or 0),
+        request_source="kafka",
+    )
+
+
+def _assessment(case: dict[str, Any]) -> ReviewAssessment:
+    """Build the review assessment an evaluation case describes."""
+    return ReviewAssessment(
+        context_version="evaluation",
+        policy_success=bool(case.get("policy_success", True)),
+        trusted_policy_eligible=bool(case.get("policy_trusted", False)),
+        policy_version_matched=bool(case.get("policy_version_matched", False)),
+        filter_level=case.get("filter_level"),
+        reranker_succeeded=bool(case.get("reranker_succeeded", False)),
+        retrieval_mode=case.get("retrieval_mode"),
+        policy_match_score=float(case.get("policy_match_score") or 0.0),
+        visual_success=bool(case.get("visual_success", False)),
+        visual_verifiable=bool(case.get("visual_verifiable", False)),
+        evidence_consistent=case.get("evidence_consistent"),
+        visual_confidence=float(case.get("visual_confidence") or 0.0),
+        policy_threshold=float(case.get("policy_threshold") or 0.55),
+        citations=tuple(case.get("citations") or ()),
+        missing_evidence=tuple(case.get("missing_evidence") or ()),
+        risk_signals=tuple(case.get("risk_signals") or ()),
+    )
+
+
 def _evaluate_case(case: dict[str, Any]) -> dict[str, Any]:
     case_type = str(case["type"])
     expected = case.get("expected")
     details: dict[str, Any] = {}
     if case_type == "policy_gate":
-        trusted = LangGraphAfterSalesAgent._trusted_policy_hits(
-            case.get("knowledge"),
-            case.get("order") or {},
-            case.get("history_summary") or {},
+        order = case.get("order") or {}
+        knowledge = case.get("knowledge") or {}
+        context = _review_context(order)
+        hits = trusted_policy_hits(context, knowledge)
+        facts = policy_facts(
+            context,
+            ToolResult(ok=True, name="retrieve_knowledge", data=knowledge),
         )
-        actual: Any = bool(trusted)
+        actual: Any = bool(facts["trusted_policy_eligible"])
         details = {
-            "trusted_hits": len(trusted),
-            "best_policy_score": LangGraphAfterSalesAgent._best_policy_score(trusted),
-            "retrieval_mode": (case.get("knowledge") or {}).get("mode"),
+            "trusted_hits": len(hits),
+            "best_policy_score": best_policy_score(hits),
+            "retrieval_mode": facts["retrieval_mode"],
+            "policy_issues": list(facts["policy_issues"]),
         }
     elif case_type == "human_handoff":
-        actual = LangGraphAfterSalesAgent._is_explicit_human_request(
+        actual = is_explicit_human_request(
             str(case.get("message") or ""),
             case.get("recent_history") or [],
         )
@@ -82,7 +144,7 @@ def _evaluate_case(case: dict[str, Any]) -> dict[str, Any]:
         payload = build_langgraph_entry_payload(case.get("payload") or {})
         actual = {
             "source": payload["client_context"].get("source"),
-            "allow_ai_review_submit": LangGraphAfterSalesAgent._allow_ai_review_submit(payload),
+            "allow_ai_review_submit": allow_ai_review_submit(payload),
         }
     elif case_type == "tool_http_error":
         status = int(case.get("status") or 0)
@@ -91,11 +153,16 @@ def _evaluate_case(case: dict[str, Any]) -> dict[str, Any]:
             "retryable": status == 429 or status >= 500,
         }
     elif case_type == "decision_confidence":
-        confidence = LangGraphAfterSalesAgent._decision_confidence(
-            float(case.get("visual_confidence") or 0),
-            case.get("trusted_policy_hits") or [],
-            bool(case.get("auto_approved")),
+        proposal = ReviewProposal(
+            proposed_verdict="APPROVE",
+            reason="evaluation",
+            confidence=0.0,
+            risk_reasons=(),
+            assistant_reply="",
+            model_confidence=float(case.get("model_confidence") or 0.0),
         )
+        scored = apply_deterministic_confidence(proposal, _assessment(case))
+        confidence = scored.confidence
         minimum, maximum = case.get("expected_range") or [0.0, 1.0]
         actual = confidence
         expected = {"min": minimum, "max": maximum}

@@ -72,6 +72,10 @@ def build_recent_history_payload(
             continue
         content = str(item.get("content") or "").strip()
         if content:
-            history.append({"role": role, "content": content})
+            history.append({
+                "role": role, "content": content,
+                **({"message_id": str(item["message_id"])} if item.get("message_id") else {}),
+                **({"create_time": str(item["create_time"])} if item.get("create_time") else {}),
+            })
     limit = max(1, int(os.getenv("AGENT_RECENT_HISTORY_LIMIT", "10")))
     return history[-limit:]

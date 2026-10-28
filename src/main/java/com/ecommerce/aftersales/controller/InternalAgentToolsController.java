@@ -778,7 +778,6 @@ public class InternalAgentToolsController {
         payload.put("policy_match_score", request.getPolicyMatchScore());
         payload.put("risk_review_reasons", request.getRiskReviewReasons());
         payload.put("policy_citations", request.getPolicyCitations());
-        payload.put("skill_versions", request.getSkillVersions());
         payload.put("image_review", request.getImageReview());
         payload.put("agent_architecture", request.getAgentArchitecture());
         payload.put("context_version", request.getContextVersion());

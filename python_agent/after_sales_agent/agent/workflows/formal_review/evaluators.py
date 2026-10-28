@@ -47,24 +47,16 @@ def _citations(hit: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def policy_facts(context: TrustedCaseContext, result: ToolResult) -> dict[str, Any]:
-    facts: dict[str, Any] = {
-        'policy_success': False,
-        'trusted_policy_eligible': False,
-        'policy_version_matched': False,
-        'filter_level': None,
-        'reranker_succeeded': False,
-        'retrieval_mode': None,
-        'policy_match_score': 0.0,
-        'policy_threshold': 0.55,
-        'required_evidence': (),
-        'citations': (),
-        'policy_issues': (result.error_category or 'policy_tool_failed',),
-    }
-    if not result.ok or not isinstance(result.data, dict):
-        return facts
+def trusted_policy_hits(
+    context: TrustedCaseContext,
+    knowledge: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """The hits that are strong enough to authorize an automatic decision.
 
-    knowledge = result.data
+    Every condition is traceable: source type, merchant, policy version, the
+    validity window at the business time, the hit threshold and a citation that
+    points back to a chunk.
+    """
     mode = str(knowledge.get('mode') or '')
     business_time = _parse_time(context.business_time)
     trusted_hits: list[dict[str, Any]] = []
@@ -93,6 +85,29 @@ def policy_facts(context: TrustedCaseContext, result: ToolResult) -> dict[str, A
             if score < threshold:
                 continue
         trusted_hits.append(hit)
+    return trusted_hits
+
+
+def policy_facts(context: TrustedCaseContext, result: ToolResult) -> dict[str, Any]:
+    facts: dict[str, Any] = {
+        'policy_success': False,
+        'trusted_policy_eligible': False,
+        'policy_version_matched': False,
+        'filter_level': None,
+        'reranker_succeeded': False,
+        'retrieval_mode': None,
+        'policy_match_score': 0.0,
+        'policy_threshold': 0.55,
+        'required_evidence': (),
+        'citations': (),
+        'policy_issues': (result.error_category or 'policy_tool_failed',),
+    }
+    if not result.ok or not isinstance(result.data, dict):
+        return facts
+
+    knowledge = result.data
+    mode = str(knowledge.get('mode') or '')
+    trusted_hits = trusted_policy_hits(context, knowledge)
 
     required: list[str] = []
     citations: list[dict[str, Any]] = []

@@ -7,7 +7,6 @@ from ..providers.llm_client import get_llm_client
 from ..tools import AgentToolRegistry
 from .context import AgentContext
 from .router import AgentRouter
-from .skill_registry import AgentSkillRegistry
 from .state import AgentTaskType
 from .workflows import ConsultationWorkflow, FormalReviewWorkflow
 
@@ -37,11 +36,10 @@ class FormalReviewRuntime(Protocol):
 
 @dataclass
 class AfterSalesAgent:
-    """唯一自主售后 Agent；事件类型明确时直接调度对应 Skill。"""
+    """售后入口；按事件类型调度会话 Agent 或正式审核工作流。"""
 
     tools: Any = field(default_factory=AgentToolRegistry)
     llm: Any = field(default_factory=get_llm_client)
-    skill_registry: AgentSkillRegistry = field(default_factory=AgentSkillRegistry)
     router: AgentRouter = field(default_factory=AgentRouter)
     checkpointer: Any | None = None
     consultation_workflow: ConsultationRuntime | None = None
@@ -52,7 +50,6 @@ class AfterSalesAgent:
             self.consultation_workflow = ConsultationWorkflow(
                 tools=self.tools,
                 llm=self.llm,
-                skills=self.skill_registry,
             )
 
     def handle_chat(
@@ -73,7 +70,6 @@ class AfterSalesAgent:
             self.formal_review_workflow = FormalReviewWorkflow(
                 tools=self.tools,
                 llm=self.llm,
-                skills=self.skill_registry,
                 checkpointer=self.checkpointer,
             )
         return self.formal_review_workflow.start(payload, trace_recorder)
@@ -88,7 +84,6 @@ class AfterSalesAgent:
             self.formal_review_workflow = FormalReviewWorkflow(
                 tools=self.tools,
                 llm=self.llm,
-                skills=self.skill_registry,
                 checkpointer=self.checkpointer,
             )
         return self.formal_review_workflow.resume(

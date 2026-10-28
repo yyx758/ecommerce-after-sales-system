@@ -70,7 +70,7 @@ class PgVectorRetrievalTest(unittest.TestCase):
 
     def test_missing_dsn_policy_query_uses_stable_degraded_contract(self) -> None:
         result = PgVectorKnowledgeRetriever(layered_config(dsn="", embedding_api_key="")).retrieve(
-            query="refund policy",
+            query="退款政策",
             source_type="after_sales_policy",
         )
 
@@ -261,10 +261,10 @@ class PgVectorRetrievalTest(unittest.TestCase):
             def _vector_search(self, **_kwargs):
                 return []
 
-            def _keyword_search(self, **_kwargs):
+            def _lexical_fallback(self, **_kwargs):
                 self.keyword_calls += 1
                 if self.keyword_calls == 1:
-                    return []
+                    return {"mode": "lexical_fallback", "query": "", "hits": [], "trace": {}}
                 raise RuntimeError("relaxed keyword database unavailable")
 
         result = _retrieve_with_fake_psycopg(
@@ -419,7 +419,7 @@ class PgVectorRetrievalTest(unittest.TestCase):
         sys.modules["psycopg"] = fake_psycopg
         try:
             retriever._lexical_fallback(
-                query="refund policy",
+                query="退款政策",
                 merchant_code="M1",
                 product_category="headphone",
                 scene="quality_issue",
@@ -452,7 +452,9 @@ class PgVectorRetrievalTest(unittest.TestCase):
         self.assertEqual(2, dense_params.count(as_of_time))
         self.assertEqual(2, keyword_params.count(as_of_time))
         self.assertIn("ts_rank_cd", keyword_sql)
-        self.assertIn("plainto_tsquery", keyword_sql)
+        # 生产实现刻意用 to_tsquery('simple'::regconfig, ...) 而非 plainto_tsquery：
+        # 显式指定 regconfig 以消除函数重载歧义，单引号包裹的 token 不会被当成列引用。
+        self.assertIn("to_tsquery('simple'::regconfig", keyword_sql)
         self.assertIn("kc.search_vector @@", keyword_sql)
 
     def test_dense_and_keyword_hits_share_citation_rank_and_raw_score_shape(self) -> None:
@@ -498,7 +500,7 @@ class PgVectorRetrievalTest(unittest.TestCase):
         sys.modules["psycopg"] = types.SimpleNamespace(connect=lambda _dsn: _FakeConnection(keyword_cursor))
         try:
             keyword = retriever._lexical_fallback(
-                query="refund policy",
+                query="退款政策",
                 merchant_code="M1",
                 product_category="headphone",
                 scene="quality_issue",
@@ -546,7 +548,7 @@ class PgVectorRetrievalTest(unittest.TestCase):
         self.assertEqual("hybrid_reranked", result["mode"])
         self.assertEqual("strict", result["filter_level"])
         self.assertTrue(result["reranker_succeeded"])
-        self.assertEqual(0.55, result["threshold"])
+        self.assertEqual(0.35, result["threshold"])
         self.assertFalse(result["no_answer"])
         self.assertTrue(result["trusted_policy_eligible"])
         self.assertTrue(result["hits"][0]["trusted_policy_eligible"])
@@ -779,7 +781,7 @@ class PgVectorRetrievalTest(unittest.TestCase):
         )
 
         result = retriever._finalize_reranked_result(
-            query="refund policy",
+            query="退款政策",
             dense_hits=[
                 {
                     "chunk_id": "FAQ-A",
@@ -808,7 +810,7 @@ class PgVectorRetrievalTest(unittest.TestCase):
 
     def test_successful_rerank_applies_source_threshold_and_sets_no_answer(self) -> None:
         policy_result = _retrieve_with_fake_psycopg(
-            _PipelineRetriever(reranker=_FakeReranker(score=0.54), dense=True, keyword=True),
+            _PipelineRetriever(reranker=_FakeReranker(score=0.30), dense=True, keyword=True),
             source_type="after_sales_policy",
         )
         faq_result = _retrieve_with_fake_psycopg(
@@ -816,10 +818,10 @@ class PgVectorRetrievalTest(unittest.TestCase):
             source_type="faq",
         )
 
-        self.assertEqual(0.55, policy_result["threshold"])
+        self.assertEqual(0.35, policy_result["threshold"])
         self.assertTrue(policy_result["no_answer"])
         self.assertEqual([], policy_result["hits"])
-        self.assertEqual(0.6, faq_result["threshold"])
+        self.assertEqual(0.4, faq_result["threshold"])
         self.assertFalse(faq_result["no_answer"])
         self.assertEqual(1, len(faq_result["hits"]))
 
@@ -1175,7 +1177,11 @@ class _FakeConnection:
 
 
 class _RecordingMultiQueryReranker:
+    class _Config:
+        configured = True
+
     def __init__(self) -> None:
+        self.config = self._Config()
         self.calls: list[tuple[str, list[dict[str, object]], int]] = []
 
     def rerank(self, query, candidates, top_n):

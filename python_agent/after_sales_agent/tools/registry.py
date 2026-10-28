@@ -13,6 +13,47 @@ from ..utils.vision_serialization import serialize_image_review
 from .schemas import ToolResult
 
 
+class ToolRole:
+    """Agent roles that may see a given tool.
+
+    A role is a hard boundary, not a prompt instruction: tools outside the
+    role are never rendered into the provider tool list, so the model cannot
+    select them because it cannot see them.
+    """
+
+    CONSULTATION = "consultation"
+    FORMAL_REVIEW = "formal_review"
+
+
+#: Read-only tools. The consultation agent may only see these; every state
+#: change stays on the workflow side so the model never mutates business state.
+READ_ONLY_TOOLS = frozenset(
+    {
+        "search_user_orders",
+        "get_order_detail",
+        "get_existing_after_sales",
+        "get_after_sales_ticket",
+        "get_merchant_policy",
+        "retrieve_knowledge",
+        "review_images",
+    }
+)
+
+#: Tools that mutate ticket or session state. Only the formal review workflow
+#: may submit a verdict, and only after the deterministic gate has approved it.
+ROLE_TOOL_NAMES: dict[str, frozenset[str]] = {
+    ToolRole.CONSULTATION: READ_ONLY_TOOLS,
+    ToolRole.FORMAL_REVIEW: READ_ONLY_TOOLS | frozenset(
+        {
+            "submit_ai_review",
+            "handoff_to_human",
+            "append_chat_message",
+            "request_missing_evidence",
+        }
+    ),
+}
+
+
 def _is_traceable_citation(value: Any) -> bool:
     if not isinstance(value, dict):
         return False
@@ -44,6 +85,113 @@ def normalize_knowledge_result(value: Any) -> Any:
         normalized_hits.append(hit)
     normalized["hits"] = normalized_hits
     return normalized
+
+
+def _tool_spec(
+    name: str,
+    description: str,
+    required: list[str],
+    read_only: bool,
+    risk_level: str,
+    idempotent: bool,
+    properties: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "name": name,
+        "description": description,
+        "input_schema": {
+            "type": "object",
+            "required": required,
+            "properties": properties or {},
+            "additionalProperties": False,
+        },
+        "read_only": read_only,
+        "risk_level": risk_level,
+        "idempotent": idempotent,
+    }
+
+
+ALL_TOOL_SPECS: list[dict[str, Any]] = [
+    _tool_spec("search_user_orders", "Search only the current user's orders.", [], True, "low", True, {
+        "keyword": {"type": "string"},
+        "status_filter": {"type": "array", "items": {"type": "string"}},
+    }),
+    _tool_spec("get_order_detail", "Get one order after Java ownership validation.", [], True, "low", True, {}),
+    _tool_spec("get_existing_after_sales", "Find an open after-sales ticket for an owned order.", [], True, "low", True, {}),
+    _tool_spec("get_after_sales_ticket", "Get an existing ticket after Java ownership validation.", [], True, "low", True, {}),
+    _tool_spec("get_merchant_policy", "Read merchant policy configuration; never mutates business state.", ["merchant_code"], True, "low", True, {
+        "merchant_code": {"type": "string"},
+    }),
+    _tool_spec(
+        "retrieve_knowledge",
+        "Retrieve RAG evidence with explicit metadata filters.",
+        ["query"],
+        True,
+        "low",
+        True,
+        properties={
+            "query": {"type": "string"},
+            "merchant_code": {"type": "string"},
+            "product_category": {"type": "string"},
+            "scene": {"type": "string"},
+            "intent": {"type": "string"},
+            "source_type": {"type": "string"},
+            "policy_version": {
+                "type": "string",
+                "description": "Java-owned policy version snapshot for historical policy lookup.",
+            },
+            "as_of_time": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Timezone-aware ISO 8601 business effective time.",
+            },
+            "top_k": {"type": "number"},
+        },
+    ),
+    _tool_spec("review_images", "Analyze evidence images without changing ticket state.", ["attachments"], True, "medium", True, {
+        "attachments": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "string"}, "name": {"type": "string"},
+                    "source": {"type": "string"}, "file_url": {"type": "string"},
+                },
+                "additionalProperties": False,
+            },
+        },
+        "order_hint": {"type": "string"},
+    }),
+    _tool_spec("submit_ai_review", "Submit a guarded review result for an existing ticket.", ["verdict"], False, "high", True, {
+        "verdict": {"type": "string"}, "after_sales_type": {"type": "string"},
+        "reason": {"type": "string"}, "reason_detail": {"type": "string"},
+        "refund_amount": {"type": "number"}, "ai_review_confidence": {"type": "number"},
+        "ai_suggested_after_sale_type": {"type": "string"}, "policy_code": {"type": "string"},
+        "policy_version": {"type": "string"}, "evidence_urls": {"type": "array", "items": {"type": "string"}},
+        "auto_approved": {"type": "boolean"},
+        "evidence_needed": {"type": "array", "items": {"type": "string"}},
+        "assistant_reply": {"type": "string"}, "visual_uncertain": {"type": "boolean"},
+        "policy_uncertain": {"type": "boolean"}, "evidence_consistent": {"type": "boolean"},
+        "visual_confidence": {"type": "number"}, "risk_review_reasons": {"type": "array", "items": {"type": "string"}},
+        "policy_match_score": {"type": "number"}, "filter_level": {"type": "string"},
+        "reranker_succeeded": {"type": "boolean"}, "trusted_policy_eligible": {"type": "boolean"},
+        "knowledge_query": {"type": "string"}, "knowledge_retrieval_mode": {"type": "string"},
+        "knowledge_hit_count": {"type": "number"}, "knowledge_hits_json": {"type": "string"},
+        "knowledge_trace_json": {"type": "string"},
+    }),
+    _tool_spec("handoff_to_human", "Move a session into human-service mode.", [], False, "medium", True, {
+        "assistant_reply": {"type": "string"}, "evidence_needed": {"type": "array", "items": {"type": "string"}},
+    }),
+    _tool_spec("append_chat_message", "Persist one chat message through Java.", ["content"], False, "medium", True, {
+        "content": {"type": "string"}, "message_type": {"type": "string"},
+        "file_url": {"type": "string"}, "emotion_label": {"type": "string"},
+        "emotion_score": {"type": "number"}, "emotion_confidence": {"type": "number"},
+        "need_human_priority": {"type": "boolean"},
+    }),
+    _tool_spec("request_missing_evidence", "Persist a generic missing-evidence request.", [], False, "medium", True, {
+        "assistant_reply": {"type": "string"}, "evidence_needed": {"type": "array", "items": {"type": "string"}},
+    }),
+]
 
 
 @dataclass
@@ -110,112 +258,32 @@ class AgentToolRegistry:
             "retrieve_knowledge_multi": self.retrieve_knowledge_multi,
         }
 
-    def tool_specs(self) -> list[dict[str, Any]]:
-        return [
-            self._tool_spec("search_user_orders", "Search only the current user's orders.", [], True, "low", True, {
-                "keyword": {"type": "string"},
-                "status_filter": {"type": "array", "items": {"type": "string"}},
-            }),
-            self._tool_spec("get_order_detail", "Get one order after Java ownership validation.", [], True, "low", True, {}),
-            self._tool_spec("get_existing_after_sales", "Find an open after-sales ticket for an owned order.", [], True, "low", True, {}),
-            self._tool_spec("get_after_sales_ticket", "Get an existing ticket after Java ownership validation.", [], True, "low", True, {}),
-            self._tool_spec("get_merchant_policy", "Read merchant policy configuration; never mutates business state.", ["merchant_code"], True, "low", True, {
-                "merchant_code": {"type": "string"},
-            }),
-            self._tool_spec(
-                "retrieve_knowledge",
-                "Retrieve RAG evidence with explicit metadata filters.",
-                ["query"],
-                True,
-                "low",
-                True,
-                properties={
-                    "query": {"type": "string"},
-                    "merchant_code": {"type": "string"},
-                    "product_category": {"type": "string"},
-                    "scene": {"type": "string"},
-                    "intent": {"type": "string"},
-                    "source_type": {"type": "string"},
-                    "policy_version": {
-                        "type": "string",
-                        "description": "Java-owned policy version snapshot for historical policy lookup.",
-                    },
-                    "as_of_time": {
-                        "type": "string",
-                        "format": "date-time",
-                        "description": "Timezone-aware ISO 8601 business effective time.",
-                    },
-                    "top_k": {"type": "number"},
-                },
-            ),
-            self._tool_spec("review_images", "Analyze evidence images without changing ticket state.", ["attachments"], True, "medium", True, {
-                "attachments": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "kind": {"type": "string"}, "name": {"type": "string"},
-                            "source": {"type": "string"}, "file_url": {"type": "string"},
-                        },
-                        "additionalProperties": False,
-                    },
-                },
-                "order_hint": {"type": "string"},
-            }),
-            self._tool_spec("submit_ai_review", "Submit a guarded review result for an existing ticket.", ["verdict"], False, "high", True, {
-                "verdict": {"type": "string"}, "after_sales_type": {"type": "string"},
-                "reason": {"type": "string"}, "reason_detail": {"type": "string"},
-                "refund_amount": {"type": "number"}, "ai_review_confidence": {"type": "number"},
-                "ai_suggested_after_sale_type": {"type": "string"}, "policy_code": {"type": "string"},
-                "policy_version": {"type": "string"}, "evidence_urls": {"type": "array", "items": {"type": "string"}},
-                "auto_approved": {"type": "boolean"},
-                "evidence_needed": {"type": "array", "items": {"type": "string"}},
-                "assistant_reply": {"type": "string"}, "visual_uncertain": {"type": "boolean"},
-                "policy_uncertain": {"type": "boolean"}, "evidence_consistent": {"type": "boolean"},
-                "visual_confidence": {"type": "number"}, "risk_review_reasons": {"type": "array", "items": {"type": "string"}},
-                "policy_match_score": {"type": "number"}, "filter_level": {"type": "string"},
-                "reranker_succeeded": {"type": "boolean"}, "trusted_policy_eligible": {"type": "boolean"},
-                "knowledge_query": {"type": "string"}, "knowledge_retrieval_mode": {"type": "string"},
-                "knowledge_hit_count": {"type": "number"}, "knowledge_hits_json": {"type": "string"},
-                "knowledge_trace_json": {"type": "string"},
-            }),
-            self._tool_spec("handoff_to_human", "Move a session into human-service mode.", [], False, "medium", True, {
-                "assistant_reply": {"type": "string"}, "evidence_needed": {"type": "array", "items": {"type": "string"}},
-            }),
-            self._tool_spec("append_chat_message", "Persist one chat message through Java.", ["content"], False, "medium", True, {
-                "content": {"type": "string"}, "message_type": {"type": "string"},
-                "file_url": {"type": "string"}, "emotion_label": {"type": "string"},
-                "emotion_score": {"type": "number"}, "emotion_confidence": {"type": "number"},
-                "need_human_priority": {"type": "boolean"},
-            }),
-            self._tool_spec("request_missing_evidence", "Persist a generic missing-evidence request.", [], False, "medium", True, {
-                "assistant_reply": {"type": "string"}, "evidence_needed": {"type": "array", "items": {"type": "string"}},
-            }),
-        ]
+    def tool_specs(self, role: str | None = None) -> list[dict[str, Any]]:
+        specs = self._all_tool_specs()
+        allowed = ROLE_TOOL_NAMES.get(role) if role else None
+        if allowed is None:
+            return specs
+        return [spec for spec in specs if spec["name"] in allowed]
+
+    def role_tool_names(self, role: str) -> frozenset[str]:
+        allowed = ROLE_TOOL_NAMES.get(role)
+        if allowed is None:
+            raise KeyError(f"unknown tool role: {role}")
+        return allowed
 
     @staticmethod
-    def _tool_spec(
-        name: str,
-        description: str,
-        required: list[str],
-        read_only: bool,
-        risk_level: str,
-        idempotent: bool,
-        properties: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        return {
-            "name": name,
-            "description": description,
-            "input_schema": {
-                "type": "object",
-                "required": required,
-                "properties": properties or {},
-                "additionalProperties": False,
-            },
-            "read_only": read_only,
-            "risk_level": risk_level,
-            "idempotent": idempotent,
-        }
+    def read_only_tool_names() -> frozenset[str]:
+        return READ_ONLY_TOOLS
+
+    @staticmethod
+    def all_tool_specs() -> list[dict[str, Any]]:
+        """Every tool spec, independent of any instance or transport."""
+        return list(ALL_TOOL_SPECS)
+
+    def _all_tool_specs(self) -> list[dict[str, Any]]:
+        return list(ALL_TOOL_SPECS)
+
+    _tool_spec = staticmethod(_tool_spec)
 
     def search_user_orders(self, args: dict[str, Any]) -> Any:
         return self._normalize_java_response(
@@ -252,7 +320,9 @@ class AgentToolRegistry:
         )
 
     def get_merchant_policy(self, args: dict[str, Any]) -> Any:
-        merchant_code = str(args.get("merchant_code") or "MERCHANT_DEMO")
+        merchant_code = str(args.get("merchant_code") or "").strip()
+        if not merchant_code:
+            raise ValueError("verified merchant_code is required")
         return self._normalize_java_response(
             self.java.get("/policies/merchant", {"merchantCode": merchant_code})
         )
@@ -326,9 +396,6 @@ class AgentToolRegistry:
             attachments,
             order_hint=args.get("order_hint"),
             issue_hint=args.get("issue_hint"),
-            skill_name=args.get("skill_name"),
-            skill_version=args.get("skill_version"),
-            skill_instructions=args.get("skill_instructions"),
         )
         return serialize_image_review(result)
 
@@ -425,7 +492,6 @@ class AgentToolRegistry:
             "risk_review_reasons": "riskReviewReasons",
             "policy_citations": "policyCitations",
             "policy_match_score": "policyMatchScore",
-            "skill_versions": "skillVersions",
             "image_review": "imageReview",
             "agent_architecture": "agentArchitecture",
             "context_version": "contextVersion",

@@ -1,4 +1,4 @@
-"""Shared resilience mechanisms — CircuitBreaker, RetryPolicy, Semaphore.
+"""Shared resilience mechanism — CircuitBreaker.
 
 Extracted from providers/resilient_llm_runtime.py and providers/reranker_client.py.
 
@@ -8,15 +8,16 @@ Each provider (LLM, Embedding, Reranker) keeps its own strategy:
   - circuit-breaker threshold and recovery time
   - degradation logic
 
-Only the *mechanism* (CircuitBreaker / RetryPolicy / Semaphore) is shared.
+Only the *mechanism* is shared. The generic retry policy and semaphore
+wrappers that used to live here had no consumer: every provider implements
+its own backoff and uses ``threading.BoundedSemaphore`` directly.
 """
 from __future__ import annotations
 
 import logging
-import random
 import threading
 import time
-from typing import Any, Callable
+from typing import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -70,94 +71,3 @@ class CircuitBreaker:
 
 class CircuitOpenError(RuntimeError):
     """Raised when a CircuitBreaker is in the open state."""
-
-
-class RetryPolicy:
-    """Generic retry with exponential backoff + jitter.
-
-    Usage::
-
-        policy = RetryPolicy(max_attempts=3, base_delay=1.0, max_delay=30.0)
-        for attempt in policy:
-            try:
-                result = do_work()
-                policy.mark_success()
-                break
-            except RetryableError as exc:
-                policy.mark_failure(exc)
-                if attempt == policy.last_attempt:
-                    raise
-                continue
-    """
-
-    def __init__(
-        self,
-        *,
-        max_attempts: int,
-        base_delay: float,
-        max_delay: float,
-    ) -> None:
-        self.max_attempts = max(1, int(max_attempts))
-        self.base_delay = max(0.0, float(base_delay))
-        self.max_delay = max(0.0, float(max_delay))
-        self.attempt = 0
-        self.last_attempt = False
-        self.current_delay = 0.0
-        self._error: Exception | None = None
-
-    def mark_failure(self, exc: Exception) -> None:
-        self._error = exc
-        self.last_attempt = self.attempt + 1 >= self.max_attempts
-        if self.last_attempt:
-            return
-        self.current_delay = min(
-            self.max_delay,
-            self.base_delay * (2 ** self.attempt),
-        )
-        self.current_delay *= random.uniform(0.5, 1.5)
-
-    def mark_success(self) -> None:
-        self._error = None
-        self.last_attempt = False
-
-    def sleep(self) -> None:
-        if self.current_delay > 0:
-            time.sleep(self.current_delay)
-
-    def __iter__(self) -> Any:
-        self.attempt = 0
-        self.last_attempt = False
-        while self.attempt < self.max_attempts:
-            self.last_attempt = self.attempt + 1 >= self.max_attempts
-            yield self.attempt
-            self.attempt += 1
-
-
-class Semaphore:
-    """Wrapper around threading.BoundedSemaphore with timed acquire."""
-
-    def __init__(self, value: int = 1) -> None:
-        self._sem = threading.BoundedSemaphore(max(1, int(value)))
-
-    def acquire(self, *, timeout: float) -> bool:
-        return self._sem.acquire(timeout=max(0.0, float(timeout)))
-
-    def release(self) -> None:
-        self._sem.release()
-
-
-class TimingSemaphore:
-    """Semaphore that records how long acquisition took (in ms)."""
-
-    def __init__(self, value: int = 1) -> None:
-        self._sem = threading.BoundedSemaphore(max(1, int(value)))
-        self.last_queue_ms = 0.0
-
-    def acquire(self, *, timeout: float) -> bool:
-        started = time.monotonic()
-        result = self._sem.acquire(timeout=max(0.0, float(timeout)))
-        self.last_queue_ms = (time.monotonic() - started) * 1000
-        return result
-
-    def release(self) -> None:
-        self._sem.release()

@@ -706,7 +706,7 @@ class AfterSalesReviewKafkaConsumer:
         with bind_trace_id(trace.trace_id):
             with trace.step(
                 "kafka_agent_execution",
-                agent_runtime="formal_review_skill",
+                agent_runtime="formal_review_graph",
             ) as trace_step:
                 result = self._run_agent_with_timeout(
                     payload,

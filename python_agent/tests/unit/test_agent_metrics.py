@@ -94,8 +94,8 @@ def test_runtime_metrics_record_kafka_review_node_steps() -> None:
             "total_duration_ms": 420,
             "steps": [
                 {"name": "kafka_idempotency_claim", "duration_ms": 2},
-                {"name": "review_policy_skill", "duration_ms": 120},
-                {"name": "review_evidence_skill", "duration_ms": 140},
+                {"name": "review_policy", "duration_ms": 120},
+                {"name": "review_visual", "duration_ms": 140},
                 {"name": "review_deterministic_gate", "duration_ms": 1},
                 {"name": "java_submit_review", "duration_ms": 30},
                 {"name": "kafka_commit_offset", "duration_ms": 3},
@@ -106,5 +106,5 @@ def test_runtime_metrics_record_kafka_review_node_steps() -> None:
     snapshot = metrics.snapshot()
 
     assert snapshot["agent_request_total"] == {"/kafka/review": 1}
-    assert snapshot["agent_step_latency_ms"]["review_policy_skill"]["max"] == 120
+    assert snapshot["agent_step_latency_ms"]["review_policy"]["max"] == 120
     assert snapshot["agent_step_latency_ms"]["java_submit_review"]["max"] == 30

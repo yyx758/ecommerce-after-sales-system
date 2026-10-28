@@ -54,6 +54,11 @@ class ToolRegistrySchemaTest(unittest.TestCase):
         self.assertNotIn("final_reply", self.registry.registry())
         self.assertNotIn("final_reply", self.specs)
 
+    def test_merchant_policy_requires_verified_merchant_code(self) -> None:
+        result = self.registry.call("get_merchant_policy", {})
+        self.assertFalse(result.ok)
+        self.assertEqual("validation", result.error_category)
+
     def test_review_revision_fields_are_camelized_for_java_contract(self) -> None:
         payload = self.registry._camelize(
             {"evidence_revision": 2, "expected_evidence_revision": 3}
@@ -107,7 +112,6 @@ class ToolRegistrySchemaTest(unittest.TestCase):
         for internal_field in (
             "ai_review_audit_json",
             "policy_citations",
-            "skill_versions",
             "image_review",
         ):
             with self.subTest(internal_field=internal_field):

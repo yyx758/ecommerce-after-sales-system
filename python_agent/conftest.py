@@ -7,6 +7,12 @@ from pathlib import Path
 from typing import Optional
 
 
+# 本地 .env 里是真实凭据，测试进程必须完全看不到它。
+# 否则 http_server / kafka_adapter 在 import 时调用 load_agent_env()，
+# 会把凭据写进 os.environ，让所有依赖"干净环境"的断言失真。
+os.environ["AGENT_ENV_DISABLED"] = "1"
+
+
 # RERANK env vars loaded by .env that must not leak between tests
 _RERANK_ENV_KEYS = frozenset([
     "RERANK_PROVIDER",
